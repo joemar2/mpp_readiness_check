@@ -1,0 +1,25 @@
+Metadata-Version: 2.1
+Name: liburl
+Version: 0.0.3
+Summary: A small package for test
+Home-page: https://liburl.com
+Author: phyng
+Author-email: phyngk@gmail.com
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Description-Content-Type: text/markdown
+
+
+# liburl
+
+# build and upload
+
+```
+python3 setup.py sdist bdist_wheel
+twine upload dist/*
+```
+
+
