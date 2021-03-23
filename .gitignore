@@ -1,0 +1,7 @@
+venv/
+.DS_Store
+build/
+dist/
+Cisco_MPP_Readiness_Check.spec
+__pycache__/
+.idea/
