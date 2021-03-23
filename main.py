@@ -461,7 +461,7 @@ def cloudReady(result_dict, full_details, typemodel_dict):
             ready += 1
         elif final_report[out]['mpp_capable'] == "No":
             notready += 1
-        elif final_report[out]['mpp_capable'] == "unknown":
+        elif final_report[out]['mpp_capable'] == "Unknown":
             unknown += 1
 
     summary_report = {

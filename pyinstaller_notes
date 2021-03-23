@@ -1,2 +1,5 @@
-# build command
+# build command - Mac
 pyinstaller main.py --name Cisco_MPP_Readiness_Check --onefile --add-data "templates:templates" --add-data "static:static"
+
+# build command - Windows
+pyinstaller main.py --name Cisco_MPP_Readiness_Check --onefile --add-data "templates;templates" --add-data "static;static"
