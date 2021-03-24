@@ -15,8 +15,8 @@
       }
    </style>
 <div class="container">
-<div class="col-md-3"></div>
-<div class="col-md-6">
+<div class="col-md-2"></div>
+<div class="col-md-8">
 <div class="panel panel-primary">
 	      <div class="panel-heading"><h4><img src="{{url_for('static', filename='Cisco_Logo.png')}}">  Unified Communications Manager Information</h4></div>
 	      <div class="panel-body">
@@ -43,18 +43,18 @@
 <div class="panel panel-default">
   <div class="panel-heading"><b>How this works:</b></div>
   <div class="panel-body">
-      <p>This tool assists with determining which Cisco IP phones can be converted to Multiplatform phone (MPP) firmware to be used with <a href="https://www.cisco.com/c/en/us/solutions/collaboration/webex-calling/index.html">Cisco Webex Calling</a> or other approved third-party call control systems.  It works by connecting to Cisco Unified Communications Manager (CUCM) and finds all phones models that can run MPP firmware.  Those phone models are the Cisco 7811, 7821, 7832, 7841, 7861, 8811, 8832, 8841, 8845, 8851, 8851NR, 8861, and 8865.</p>
+      <p>This tool assists with determining which Cisco IP phones can be converted to Multiplatform phone (MPP) firmware to be used with <a href="https://www.cisco.com/c/en/us/solutions/collaboration/webex-calling/index.html">Cisco Webex Calling</a> or other approved third-party call control systems.  It works by connecting to Cisco Unified Communications Manager (CUCM) and finds all phone models that can run MPP firmware.  Those phone models are the Cisco 7811, 7821, 7832, 7841, 7861, 8811, 8832, 8841, 8845, 8851, 8851NR, 8861, and 8865.</p>
       <p>Next it checks for hardware version restrictions as described in table 1 of the <a href="https://www.cisco.com/c/en/us/products/collateral/collaboration-endpoints/unified-ip-phone-7800-series/guide-c07-742786.html">Convert between Enterprise Firmware and Multiplatform Firmware for Cisco IP Phone 7800 and 8800 Series Guide</a>.</p>
       <p>In order to determine the hardware version and serial number of each phone, web access has to be enabled.  The above checkbox <b>Enable Phone Web Access Temporarily</b> will turn on web access from CUCM and then perform an apply config.  This means <b>phones that had web access disabled will reset to enable web access</b>.  After checking the hardware version and serial number web access will be reverted back to it's original setting as it was prior to running this tool.  For best results check the "Enable Phone Web Access Temporarily" option.</p>
       <p>The resulting phone details contains a column "MPP Supported" showing whether the hardware version supports MPP firmware.</p>
       <p></p>
       <p><b><u>Notes</u></b></p>
       <p>If the webpage of the phone is not reachable because the phone is unregistered, the phone is registered through an Expressway using Mobile and Remote Access (MRA), or other connection failure, the resulting fields will display "unknwon".</p>
-
+      <p align="right">v1.0</p>
   </div>
 </div>
 </div>
-<div class="col-md-3"></div>
+<div class="col-md-2"></div>
 </div>
 <script src="{{url_for('static', filename='js/bootstrap.min.js')}}"></script>
 <script>
