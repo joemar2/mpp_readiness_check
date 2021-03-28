@@ -109,7 +109,7 @@ def getPhoneInfo():
                 if key.startswith('SEP'):
                     ris_lookup_list.append(key)
 
-            print(ris_lookup_list)
+            print("Found the following phones: " + str(ris_lookup_list))
 
         else:
             print("Cluster " + address + " Failed to connect to AXL")
@@ -226,11 +226,13 @@ def getPhoneInfo():
                          'model':name_model_lookup[phone],
                          'description':name_description_lookup[phone],
                          'devicepool':name_to_dp[phone]}
-    print(str(result_dic))
+    #print(str(result_dic))
 
     # give the phones time to apply the web access setting change otherwise this happens too fast
     # webaccess will still be disabled without this when trying to check
-    time.sleep(10)
+    if "webaccess" in request.form:
+        print("Waiting 30 seconds for phones to reset after enabling web access...")
+        time.sleep(30)
 
     full_details = getHardwareVersion(result_dic)
 
@@ -245,7 +247,7 @@ def getPhoneInfo():
     end = time.time()
     hours, rem = divmod(end - start, 3600)
     minutes, seconds = divmod(rem, 60)
-    print("Time Taken: {:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds))
+    print("Done - Completed in {:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds))
 
     if len(full_details) > 0:
         return render_template("results2.html", webdata=final_report, summary=summary_report)
@@ -347,7 +349,7 @@ def enableWebAccess(name_to_pkid, axl_url, s, header, address):
         # read device xml here to save the original value of webaccess to put back later
         webaccessRead = "execute procedure dbreaddevicexml('" + str(pkid) + "')"
         c = s.post(url=axl_url, verify=False, data=formatSOAPQuery(webaccessRead))
-        print("DEBUG DEBUG DEBUG " + c.text)
+        #print("DEBUG DEBUG DEBUG " + c.text)
         # When setting &lt and &gt for AXL posts to work the return AXL data in a  get is escapated for the first character, not the second
         # Setting from the webpage sets the pages returned via AXL to <value> so catch both conditions
         if '<webAccess>' in c.text:
@@ -368,8 +370,8 @@ def enableWebAccess(name_to_pkid, axl_url, s, header, address):
 
         # webaccess 0 means enabled, 1 means disabled, need to escape the < > or else the XML tags are stripped by AXL before inserting into the DB
         webaccessON = "execute procedure dbwritedevicexml('" + str(pkid) + "','&lt;webAccess&gt;0&lt;/webAccess&gt;')"
-        print("URL " + str(webaccessON))
-        print (formatSOAPUpdate(webaccessON))
+        #print("URL " + str(webaccessON))
+        #print (formatSOAPUpdate(webaccessON))
         y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessON))
         if y.status_code == 200:
             print("Cluster %s: Successfully updated webaccess settings for %s" % (address, device))
@@ -385,7 +387,7 @@ def applyConfig(devicename, session, axl_url, header, devicepkid):
     soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/12.5"><soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>%s</uuid></ns:applyPhone></soapenv:Body></soapenv:Envelope>''' % (devicepkid)
     z = session.post(url=axl_url, headers=header, verify=False, data=soap_data)
     if z.status_code != 200:
-        print('*** ERROR *** Apply config failed for %s' % (devicename))
+        print('*** ERROR *** Apply config failed for %s (%s)' % (devicename, devicepkid))
     else:
         print('Apply config sent for %s (%s)' % (devicename, devicepkid))
 
