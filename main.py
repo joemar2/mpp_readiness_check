@@ -33,6 +33,7 @@ def getPhoneInfo():
     password = urllib.parse.quote(request.form['password'])
 
     #https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/MPP/MPP-conversion/enterprise-to-mpp/cuip_b_conversion-guide-ipphone/cuip_b_conversion-guide-ipphone_chapter_00.html
+    #not eligible to migrate to MPP: 8821, 8851NR, 8865NR, and 8831 not supported for conversion
     typeproduct_dict = {
         '7811':'36665',
         '7821':'508',
@@ -43,9 +44,11 @@ def getPhoneInfo():
         '8841':'683',
         '8845':'36677',
         '8865':'36678',
-        '8851NR':'36685',
+        #'8851NR':'36685',
+        #'8865NR':'36701',
         '8851':'569',
         '8861':'570',
+        #'8832NR':'36713',
         '8832':'36711'
     }
 
@@ -60,7 +63,7 @@ def getPhoneInfo():
         '8841' : '683',
         '8845' : '36224',
         '8851' : '684',
-        '8851NR' : '36232',
+        #'8851NR' : '36232',
         '8861' : '685',
         '8865' : '36225'
     }
