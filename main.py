@@ -73,8 +73,8 @@ def getPhoneInfo():
         typeproduct_enums.append(value)
     axlquery = "SELECT device.pkid AS devicepkid, device.name, devicepool.name AS devicepoolname, typeproduct.enum as modelenum FROM device LEFT OUTER JOIN devicepool ON device.fkdevicepool = devicepool.pkid LEFT OUTER JOIN typeproduct ON device.tkproduct = typeproduct.enum where typeproduct.enum in (%s)" % (','.join("'{0}'".format(x) for x in typeproduct_enums))
 
-    axl_header = {"Content-type":"text/xml","SOAPAction":"CUCM:DB ver=12.5"}
-    header = {"Content-type": "text/xml", "SOAPAction":"CUCM:DB ver=12.5"}
+    axl_header = {"Content-type":"text/xml","SOAPAction":"CUCM:DB ver=11.0"}
+    header = {"Content-type": "text/xml", "SOAPAction":"CUCM:DB ver=11.0"}
     axl_url = "https://%s:%s@%s:8443/axl/" % (username, password, address)
 
     try:
@@ -259,13 +259,13 @@ def getPhoneInfo():
 
 
 def formatSOAPQuery(query):
-    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/12.5"><soapenv:Header/><soapenv:Body><ns:executeSQLQuery><sql>%s</sql></ns:executeSQLQuery></soapenv:Body></soapenv:Envelope>' % query
+    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/11.0"><soapenv:Header/><soapenv:Body><ns:executeSQLQuery><sql>%s</sql></ns:executeSQLQuery></soapenv:Body></soapenv:Envelope>' % query
 
     return soap_data
 
 
 def formatSOAPUpdate(query):
-    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/12.5"><soapenv:Header/><soapenv:Body><ns:executeSQLUpdate><sql>%s</sql></ns:executeSQLUpdate></soapenv:Body></soapenv:Envelope>' % query
+    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/11.0"><soapenv:Header/><soapenv:Body><ns:executeSQLUpdate><sql>%s</sql></ns:executeSQLUpdate></soapenv:Body></soapenv:Envelope>' % query
 
     return soap_data
 
@@ -387,7 +387,7 @@ def enableWebAccess(name_to_pkid, axl_url, s, header, address):
 
 
 def applyConfig(devicename, session, axl_url, header, devicepkid):
-    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/12.5"><soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>%s</uuid></ns:applyPhone></soapenv:Body></soapenv:Envelope>''' % (devicepkid)
+    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/11.0"><soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>%s</uuid></ns:applyPhone></soapenv:Body></soapenv:Envelope>''' % (devicepkid)
     z = session.post(url=axl_url, headers=header, verify=False, data=soap_data)
     if z.status_code != 200:
         print('*** ERROR *** Apply config failed for %s (%s)' % (devicename, devicepkid))
