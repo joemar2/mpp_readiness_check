@@ -78,7 +78,8 @@ def getPhoneInfo():
     axl_url = "https://%s:%s@%s:8443/axl/" % (username, password, address)
 
     try:
-        a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery), timeout=10)
+        #a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery), timeout=10)
+        a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery), timeout=120)
 
         dp = []
         axldevices = []
