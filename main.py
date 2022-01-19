@@ -6,7 +6,7 @@ import requests, urllib.parse, re
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from bs4 import BeautifulSoup
 
-#http://stackoverflow.com/questions/32149892/flask-application-built-using-pyinstaller-not-rendering-index-html
+# http://stackoverflow.com/questions/32149892/flask-application-built-using-pyinstaller-not-rendering-index-html
 if getattr(sys, 'frozen', False):
     template_folder = os.path.join(sys._MEIPASS, 'templates')
     static_folder = os.path.join(sys._MEIPASS, 'static')
@@ -14,14 +14,16 @@ if getattr(sys, 'frozen', False):
 else:
     app = Flask(__name__)
 
-#app = Flask(__name__)
+# app = Flask(__name__)
 
 webbrowser.open('http://localhost:5000')
+
 
 @app.route("/", methods=['GET'])
 def form():
     wrong = "no"
     return render_template("main.html", wrong=wrong)
+
 
 @app.route("/phoneinfo", methods=["POST"])
 def getPhoneInfo():
@@ -32,54 +34,55 @@ def getPhoneInfo():
     username = request.form['username']
     password = urllib.parse.quote(request.form['password'])
 
-    #https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/MPP/MPP-conversion/enterprise-to-mpp/cuip_b_conversion-guide-ipphone/cuip_b_conversion-guide-ipphone_chapter_00.html
-    #not eligible to migrate to MPP: 8821, 8851NR, 8865NR, and 8831 not supported for conversion
+    # https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/MPP/MPP-conversion/enterprise-to-mpp/cuip_b_conversion-guide-ipphone/cuip_b_conversion-guide-ipphone_chapter_00.html
+    # not eligible to migrate to MPP: 8821, 8851NR, 8865NR, and 8831 not supported for conversion
     typeproduct_dict = {
-        '7811':'36665',
-        '7821':'508',
-        '7832':'36700',
-        '7841':'509',
-        '7861':'510',
-        '8811':'36670',
-        '8841':'683',
-        '8845':'36677',
-        '8865':'36678',
-        #'8851NR':'36685',
-        #'8865NR':'36701',
-        '8851':'569',
-        '8861':'570',
-        #'8832NR':'36713',
-        '8832':'36711'
+        '7811': '36665',
+        '7821': '508',
+        '7832': '36700',
+        '7841': '509',
+        '7861': '510',
+        '8811': '36670',
+        '8841': '683',
+        '8845': '36677',
+        '8865': '36678',
+        # '8851NR':'36685',
+        # '8865NR':'36701',
+        '8851': '569',
+        '8861': '570',
+        # '8832NR':'36713',
+        '8832': '36711'
     }
 
     typemodel_dict = {
-        '7811' : '36213',
-        '7821' : '621',
-        '7832' : '36247',
-        '7841' : '622',
-        '7861' : '623',
-        '8811' : '36217',
-        '8832' : '36258',
-        '8841' : '683',
-        '8845' : '36224',
-        '8851' : '684',
-        #'8851NR' : '36232',
-        '8861' : '685',
-        '8865' : '36225'
+        '7811': '36213',
+        '7821': '621',
+        '7832': '36247',
+        '7841': '622',
+        '7861': '623',
+        '8811': '36217',
+        '8832': '36258',
+        '8841': '683',
+        '8845': '36224',
+        '8851': '684',
+        # '8851NR' : '36232',
+        '8861': '685',
+        '8865': '36225'
     }
 
     typeproduct_enums = []
     for key, value in typeproduct_dict.items():
         typeproduct_enums.append(value)
-    axlquery = "SELECT device.pkid AS devicepkid, device.name, devicepool.name AS devicepoolname, typeproduct.enum as modelenum FROM device LEFT OUTER JOIN devicepool ON device.fkdevicepool = devicepool.pkid LEFT OUTER JOIN typeproduct ON device.tkproduct = typeproduct.enum where typeproduct.enum in (%s)" % (','.join("'{0}'".format(x) for x in typeproduct_enums))
+    axlquery = "SELECT device.pkid AS devicepkid, device.name, devicepool.name AS devicepoolname, typeproduct.enum as modelenum FROM device LEFT OUTER JOIN devicepool ON device.fkdevicepool = devicepool.pkid LEFT OUTER JOIN typeproduct ON device.tkproduct = typeproduct.enum where typeproduct.enum in (%s)" % (
+        ','.join("'{0}'".format(x) for x in typeproduct_enums))
 
-    axl_header = {"Content-type":"text/xml","SOAPAction":"CUCM:DB ver=11.0"}
-    header = {"Content-type": "text/xml", "SOAPAction":"CUCM:DB ver=11.0"}
+    axl_header = {"Content-type": "text/xml", "SOAPAction": "CUCM:DB ver=11.0"}
+    header = {"Content-type": "text/xml", "SOAPAction": "CUCM:DB ver=11.0"}
     axl_url = "https://%s:%s@%s:8443/axl/" % (username, password, address)
 
     try:
-        #a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery), timeout=10)
-        a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery), timeout=120)
+        # a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery), timeout=10)
+        a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery))
 
         dp = []
         axldevices = []
@@ -93,7 +96,8 @@ def getPhoneInfo():
             devpool = soup.find_all('devicepoolname')
             for found in name:
                 h = BeautifulSoup(str(found), 'xml')
-                axldevices.append(h.find('name').text.upper())  #one VNT device has lower case cc at the end of the MAC rest is UPPER
+                axldevices.append(
+                    h.find('name').text.upper())  # one VNT device has lower case cc at the end of the MAC rest is UPPER
             for d in devpool:
                 h = BeautifulSoup(str(d), 'xml')
                 dp.append(h.find('devicepoolname').text)
@@ -104,7 +108,7 @@ def getPhoneInfo():
             name_to_dp = dict(zip(axldevices, dp))
             name_to_pkid = dict(zip(axldevices, pkids))
 
-            #enable web access for devices if selected
+            # enable web access for devices if selected
             if "webaccess" in request.form:
                 orig_webaccess_value = enableWebAccess(name_to_pkid, axl_url, s, header, address)
 
@@ -131,7 +135,7 @@ def getPhoneInfo():
 
     all_ris_results = []
     print("Cluster " + address + ": Looking up phone IP addresses using RIS")
-    #print "RIS QUERY: " + str(risquery)
+    # print "RIS QUERY: " + str(risquery)
 
     first_ris = True
 
@@ -146,7 +150,8 @@ def getPhoneInfo():
                 all_ris_results.append(x.text)
             else:
                 print("Cluster " + address + ": Failed to get phone IP addresses via RIS")
-                print("Cluster " + address + ": Check user roles include Standard AXL API Access, Standard RealtimeAndTraceCollection, and Standard CCM Admin Users")
+                print(
+                    "Cluster " + address + ": Check user roles include Standard AXL API Access, Standard RealtimeAndTraceCollection, and Standard CCM Admin Users")
                 wrong = "Invalid username or password"
                 return render_template("main.html", wrong=wrong)
 
@@ -159,7 +164,7 @@ def getPhoneInfo():
     IPs = []
     SEP_list = []
 
-    #provide a big string of data to parse
+    # provide a big string of data to parse
     for data in all_ris_results:
         # Only pull from the device name field, the description field could be found if the regex is not specific enough causing duplicates
         SEP = re.findall(r'<ns1:Name>SEP[A-Z0-9]+</ns1:Name>', data)
@@ -195,7 +200,7 @@ def getPhoneInfo():
     phone_IPs = dict(zip(SEP_list, IPs))
     phone_FW = dict(zip(SEP_list, FW))
     phone_model = dict(zip(SEP_list, phonemodel))
-    phone_description = dict(zip(SEP_list,describe))
+    phone_description = dict(zip(SEP_list, describe))
     name_ip_lookup = {}
     name_fw_lookup = {}
     name_model_lookup = {}
@@ -203,8 +208,8 @@ def getPhoneInfo():
 
     IP_list = []
 
-    #lookup the IP addresses of the phones in the phone device name list,
-    #unregistered phones will cause a key error when we look them up so ignore it and continue
+    # lookup the IP addresses of the phones in the phone device name list,
+    # unregistered phones will cause a key error when we look them up so ignore it and continue
     for item in phone_IPs:
         try:
             IP_list.append(phone_IPs[item])
@@ -213,34 +218,34 @@ def getPhoneInfo():
             name_model_lookup[item] = phone_model[item]
             name_description_lookup[item] = phone_description[item]
         except KeyError:
-            #should never get here because the RIS query asks for only registered devices
+            # should never get here because the RIS query asks for only registered devices
             print("Cluster " + address + ": Ignore " + str(item) + " because it is unregistered")
             continue
 
-    #print IP_list
-    #print name_ip_lookup
-    #print name_fw_lookup
-    #print name_model_lookup
-    #print name_description_lookup
+    # print IP_list
+    # print name_ip_lookup
+    # print name_fw_lookup
+    # print name_model_lookup
+    # print name_description_lookup
     result_dic = {}
 
     for phone in name_ip_lookup:
-        result_dic[phone] = {'ip':name_ip_lookup[phone],
-                         'firmware':name_fw_lookup[phone],
-                         'model':name_model_lookup[phone],
-                         'description':name_description_lookup[phone],
-                         'devicepool':name_to_dp[phone]}
-    #print(str(result_dic))
+        result_dic[phone] = {'ip': name_ip_lookup[phone],
+                             'firmware': name_fw_lookup[phone],
+                             'model': name_model_lookup[phone],
+                             'description': name_description_lookup[phone],
+                             'devicepool': name_to_dp[phone]}
+    # print(str(result_dic))
 
     # give the phones time to apply the web access setting change otherwise this happens too fast
     # webaccess will still be disabled without this when trying to check
     if "webaccess" in request.form:
-        print("Waiting 30 seconds for phones to reset after enabling web access...")
-        time.sleep(30)
+        print("Waiting 60 seconds for phones to reset after enabling web access...")
+        time.sleep(60)
 
     full_details = getHardwareVersion(result_dic)
 
-    #put back web access after changing it to what is was originally if chosen to enable web access
+    # put back web access after changing it to what is was originally if chosen to enable web access
     if "webaccess" in request.form:
         revertWebAccess(orig_webaccess_value, axl_url, name_to_pkid, s, header, address)
 
@@ -270,19 +275,20 @@ def formatSOAPUpdate(query):
 
     return soap_data
 
+
 def formatRISQuery(device_list):
     ris_queries_list = []
 
-    #if over 1000, split into 1000 devices at a time, since that is the maximum in a request
-    #https://stackoverflow.com/questions/3950079/paging-python-lists-in-slices-of-4-items
+    # if over 1000, split into 1000 devices at a time, since that is the maximum in a request
+    # https://stackoverflow.com/questions/3950079/paging-python-lists-in-slices-of-4-items
     split_device_list = [device_list[i:i + 1000] for i in range(0, len(device_list), 1000)]
-    #for testing to make sure I hit the limit and split requests and then combine the results later
-    #split_device_list = [device_list[i:i + 5] for i in range(0, len(device_list), 5)]
+    # for testing to make sure I hit the limit and split requests and then combine the results later
+    # split_device_list = [device_list[i:i + 5] for i in range(0, len(device_list), 5)]
 
     for chunk in split_device_list:
         q = ""
         for dev in chunk:
-            q = q + "<soap:item><soap:Item>"+dev+"</soap:Item></soap:item>"
+            q = q + "<soap:item><soap:Item>" + dev + "</soap:Item></soap:item>"
 
         # Returns all registered phones, any model, using the select items list to put in 1000 devices at a time (max) to get all phones found from AXL query
         ris_query = """<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soap="http://schemas.cisco.com/ast/soap">
@@ -310,6 +316,7 @@ def formatRISQuery(device_list):
         ris_queries_list.append(ris_query)
     return ris_queries_list
 
+
 def getHardwareVersion(result_dic):
     hardware_info = {}
     for phone in result_dic:
@@ -321,11 +328,11 @@ def getHardwareVersion(result_dic):
                 soup = BeautifulSoup(x.text, 'xml')
                 udi = soup.find_all('udi')
 
-                #hardware_info['SEPB000B4BA1DFA'] = {serial: '', 'hw_ver':''}
+                # hardware_info['SEPB000B4BA1DFA'] = {serial: '', 'hw_ver':''}
                 parts = str.splitlines(str(udi[0]))
                 serial = parts[4]
                 hw_ver = parts[3]
-                hardware_info[phone]= {'serial':serial,'hw_ver':hw_ver}
+                hardware_info[phone] = {'serial': serial, 'hw_ver': hw_ver}
             else:
                 print("Failed to connect to the phone's webpage for %s (%s)" % (phone, result_dic[phone]['ip']))
         except:
@@ -343,17 +350,17 @@ def enableWebAccess(name_to_pkid, axl_url, s, header, address):
     # pkid MUST be lowercase or it fails with
     '''
     2021-02-18 14:20:55,372 DEBUG [http-bio-1025-exec-16] servletRouters.AXLAlpha - <?xml version='1.0' encoding='UTF-8'?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><soapenv:Fault><faultcode>soapenv:Client</faultcode><faultstring>Missing key in referenced table for referential constraint (informix.fk_devicexml4k_fkdevice).</faultstring><detail><axlError><axlcode>-691</axlcode><axlmessage>Missing key in referenced table for referential constraint (informix.fk_devicexml4k_fkdevice).</axlmessage><request>executeSQLUpdate</request></axlError></detail></soapenv:Fault></soapenv:Body></soapenv:Envelope>
-    
+
     2021-02-18 14:20:55,335 WARN  [http-bio-1025-exec-16] axlapiservice.ExecuteSqlHandler - java.sql.SQLException: Missing key in referenced table for referential constraint (informix.fk_devicexml4k_fkdevice).
     '''
 
     # Enable web access with the stored procedure
-    for device,pkid in name_to_pkid.items():
+    for device, pkid in name_to_pkid.items():
 
         # read device xml here to save the original value of webaccess to put back later
         webaccessRead = "execute procedure dbreaddevicexml('" + str(pkid) + "')"
         c = s.post(url=axl_url, verify=False, data=formatSOAPQuery(webaccessRead))
-        #print("DEBUG DEBUG DEBUG " + c.text)
+        # print("DEBUG DEBUG DEBUG " + c.text)
         # When setting &lt and &gt for AXL posts to work the return AXL data in a  get is escapated for the first character, not the second
         # Setting from the webpage sets the pages returned via AXL to <value> so catch both conditions
         if '<webAccess>' in c.text:
@@ -374,8 +381,8 @@ def enableWebAccess(name_to_pkid, axl_url, s, header, address):
 
         # webaccess 0 means enabled, 1 means disabled, need to escape the < > or else the XML tags are stripped by AXL before inserting into the DB
         webaccessON = "execute procedure dbwritedevicexml('" + str(pkid) + "','&lt;webAccess&gt;0&lt;/webAccess&gt;')"
-        #print("URL " + str(webaccessON))
-        #print (formatSOAPUpdate(webaccessON))
+        # print("URL " + str(webaccessON))
+        # print (formatSOAPUpdate(webaccessON))
         y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessON))
         if y.status_code == 200:
             print("Cluster %s: Successfully updated webaccess settings for %s" % (address, device))
@@ -388,7 +395,8 @@ def enableWebAccess(name_to_pkid, axl_url, s, header, address):
 
 
 def applyConfig(devicename, session, axl_url, header, devicepkid):
-    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/11.0"><soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>%s</uuid></ns:applyPhone></soapenv:Body></soapenv:Envelope>''' % (devicepkid)
+    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/11.0"><soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>%s</uuid></ns:applyPhone></soapenv:Body></soapenv:Envelope>''' % (
+        devicepkid)
     z = session.post(url=axl_url, headers=header, verify=False, data=soap_data)
     if z.status_code != 200:
         print('*** ERROR *** Apply config failed for %s (%s)' % (devicename, devicepkid))
@@ -401,17 +409,18 @@ def revertWebAccess(orig_webaccess_value, axl_url, name_to_pkid, s, header, addr
         webaccessChange = "execute procedure dbwritedevicexml(\'%s\', \'%s\')" % (pkid, orig_webaccess_value[pkid])
         y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessChange))
         if y.status_code == 200:
-            for name,p in name_to_pkid.items():
+            for name, p in name_to_pkid.items():
                 if p == pkid:
                     print("Cluster %s: Successfully reverted webaccess settings for %s" % (address, name))
                     applyConfig(name, s, axl_url, header, pkid)
         else:
             print("Cluster " + str(address) + ": --- ERROR CODE 1 --- " + str(y.text))
 
+
 def cloudReady(result_dict, full_details, typemodel_dict):
-    #final_report = cloudReady(result_dic, full_details)
-    #result_dict = {'SEPB000B4BA1DFA': {'ip': '10.2.2.24', 'firmware': 'sip88xx.14-0-1MN-1036', 'model': '684', 'description': 'Auto 1003', 'devicepool': 'Default'}}
-    #full_details = {'SEPB000B4BA1DFA': {'serial': 'FCH18219LDW', 'hw_ver': 'V01'}}
+    # final_report = cloudReady(result_dic, full_details)
+    # result_dict = {'SEPB000B4BA1DFA': {'ip': '10.2.2.24', 'firmware': 'sip88xx.14-0-1MN-1036', 'model': '684', 'description': 'Auto 1003', 'devicepool': 'Default'}}
+    # full_details = {'SEPB000B4BA1DFA': {'serial': 'FCH18219LDW', 'hw_ver': 'V01'}}
 
     final_report = {}
 
@@ -420,9 +429,9 @@ def cloudReady(result_dict, full_details, typemodel_dict):
         try:
             hw_ver = full_details[devicename]['hw_ver']
 
-            if model == typemodel_dict['7821'] and hw_ver >= 'V03': #7821 (V03 or later)
+            if model == typemodel_dict['7821'] and hw_ver >= 'V03':  # 7821 (V03 or later)
                 cloud_ready = 'Yes'
-            elif hw_ver == "unknown" and model in ['621','622','623']:  # unknown hw_ver and 7821/7841/7861
+            elif hw_ver == "unknown" and model in ['621', '622', '623']:  # unknown hw_ver and 7821/7841/7861
                 cloud_ready = "Unknown"
             elif model == typemodel_dict['7821']:
                 cloud_ready = 'No'
@@ -442,21 +451,21 @@ def cloudReady(result_dict, full_details, typemodel_dict):
                     model_name = k
 
         except KeyError:
-            #catch MRA devices where we cannot lookup Serial/HW_ver due to expressway in between
+            # catch MRA devices where we cannot lookup Serial/HW_ver due to expressway in between
             cloud_ready = 'unknown'
             print("MRA Registered Device Found: %s" % (devicename))
 
         final_report[devicename] = {
-            'devicename' : devicename,
-            'ip' : result_dict[devicename]['ip'],
-            'firmware' : result_dict[devicename]['firmware'],
-            'model' : model,
-            'phone_model' : model_name, #actual name not enum
-            'description' : result_dict[devicename]['description'],
-            'devicepool' : result_dict[devicename]['devicepool'],
-            'serial' : full_details[devicename]['serial'],
-            'hw_ver' : hw_ver,
-            'mpp_capable' : cloud_ready
+            'devicename': devicename,
+            'ip': result_dict[devicename]['ip'],
+            'firmware': result_dict[devicename]['firmware'],
+            'model': model,
+            'phone_model': model_name,  # actual name not enum
+            'description': result_dict[devicename]['description'],
+            'devicepool': result_dict[devicename]['devicepool'],
+            'serial': full_details[devicename]['serial'],
+            'hw_ver': hw_ver,
+            'mpp_capable': cloud_ready
         }
 
     ready = 0
@@ -471,7 +480,7 @@ def cloudReady(result_dict, full_details, typemodel_dict):
             unknown += 1
 
     summary_report = {
-        "total":len(final_report),
+        "total": len(final_report),
         "ready": ready,
         "notready": notready,
         "unknown": unknown
@@ -479,8 +488,10 @@ def cloudReady(result_dict, full_details, typemodel_dict):
 
     return final_report, summary_report
 
+
 def generateCSV(final_report):
-    csv_columns = ['devicename', 'devicepool', 'phone_model', 'firmware', 'description', 'ip', 'serial', 'hw_ver','mpp_capable']
+    csv_columns = ['devicename', 'devicepool', 'phone_model', 'firmware', 'description', 'ip', 'serial', 'hw_ver',
+                   'mpp_capable']
     if getattr(sys, 'frozen', False):
         csv_file_location = os.path.join(sys._MEIPASS, 'static') + "/Cisco_MPP_Firmware_Readiness_Report.csv"
     else:
@@ -494,4 +505,4 @@ def generateCSV(final_report):
 
 
 if __name__ == '__main__':
-        app.run(host='127.0.0.1', port=5000, debug=False)
+    app.run(host='127.0.0.1', port=5000, debug=False)
