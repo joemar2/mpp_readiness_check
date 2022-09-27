@@ -72,7 +72,14 @@ def getPhoneInfo():
 
     typeproduct_enums = []
     for key, value in typeproduct_dict.items():
-        typeproduct_enums.append(value)
+        if "7800_only" in request.form:
+            if key.startswith('78'):
+                typeproduct_enums.append(value)
+        else:
+            typeproduct_enums.append(value)
+
+    #print("dict of phones to do" + str(typeproduct_enums))
+
     axlquery = "SELECT device.pkid AS devicepkid, device.name, devicepool.name AS devicepoolname, typeproduct.enum as modelenum FROM device LEFT OUTER JOIN devicepool ON device.fkdevicepool = devicepool.pkid LEFT OUTER JOIN typeproduct ON device.tkproduct = typeproduct.enum where typeproduct.enum in (%s)" % (
         ','.join("'{0}'".format(x) for x in typeproduct_enums))
 
@@ -111,13 +118,17 @@ def getPhoneInfo():
             # enable web access for devices if selected
             if "webaccess" in request.form:
                 orig_webaccess_value = enableWebAccess(name_to_pkid, axl_url, s, header, address)
+                print("webaccess checked")
 
             ris_lookup_list = []
             for key in name_to_dp:
                 if key.startswith('SEP'):
                     ris_lookup_list.append(key)
 
-            print("Found the following phones: " + str(ris_lookup_list))
+            if "7800_only" in request.form
+                print("Found the following 7800 series phones: " + str(ris_lookup_list))
+            else:
+                print("Found the following 7800 AND 8800 series phones: " + str(ris_lookup_list))
 
         else:
             print("Cluster " + address + " Failed to connect to AXL")
