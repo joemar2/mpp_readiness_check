@@ -125,7 +125,7 @@ def getPhoneInfo():
                 if key.startswith('SEP'):
                     ris_lookup_list.append(key)
 
-            if "7800_only" in request.form
+            if "7800_only" in request.form:
                 print("Found the following 7800 series phones: " + str(ris_lookup_list))
             else:
                 print("Found the following 7800 AND 8800 series phones: " + str(ris_lookup_list))
