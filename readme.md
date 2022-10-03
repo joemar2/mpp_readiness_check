@@ -8,7 +8,7 @@ There was no easy way to determine the hardware version of your IP phones. We do
 On Cisco Unified Communications Manager (CUCM) create a phone service from Device > Device Settings > Phone Services.  Provide a "Service Name" such as "CER Audit" and set the "Service URL" to point to "http://<flask server>:<optional port>/cerlocationaudit/<cluster id>".  The cluster ID is should match the cer_cluster_name so that the tool knows which CER cluster is associated with which CUCM cluster.  Optionally select "Enterprise Subscription" so that every phone will have this service available without having to subscribe phones to the service.  Also ensure the "enabled" checkbox is selected.
 
 ## Solution
-There is now a standalone executable tool that can be given to customers that automates the hardware version retrieval proces -> DOWNLOAD.
+There is now a standalone executable tool that can be given to customers that automates the hardware version retrieval proces -> [DOWNLOAD](https://github.com/joemar2/mpp_readiness_check/tree/master/executables).
 
 ![alt-text](readme_images/main_screen.png "Main Screen")
 
