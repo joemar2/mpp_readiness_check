@@ -64,7 +64,7 @@
 <script>
 function loading() {
     var btn = document.getElementById('button');
-    btn.disabled = true;
+    setTimeout(function() {btn.disabled = true;},10);
     btn.innerHTML = '<i id="spinner" class="fas fa-spinner fa-pulse"></i> Running...';
 }
 
