@@ -35,7 +35,7 @@ def getPhoneInfo():
     password = urllib.parse.quote(request.form['password'])
 
     # https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/MPP/MPP-conversion/enterprise-to-mpp/cuip_b_conversion-guide-ipphone/cuip_b_conversion-guide-ipphone_chapter_00.html
-    # not eligible to migrate to MPP: 8821, 8851NR, 8865NR, and 8831 not supported for conversion
+    # not eligible to migrate to MPP: 8821, 8851NR, 8865NR, and 8831 not supported for conversion (8832/8832NR only up to V07, not V08+)
     typeproduct_dict = {
         '7811': '36665',
         '7821': '508',
@@ -43,15 +43,15 @@ def getPhoneInfo():
         '7841': '509',
         '7861': '510',
         '8811': '36670',
+        '8832': '36711',
+        '8832NR': '36713',
         '8841': '568',
         '8845': '36677',
-        '8865': '36678',
+        '8851': '569',
         # '8851NR':'36685',
         # '8865NR':'36701',
-        '8851': '569',
         '8861': '570',
-        # '8832NR':'36713',
-        '8832': '36711'
+        '8865': '36678'
     }
 
     typemodel_dict = {
@@ -62,18 +62,25 @@ def getPhoneInfo():
         '7861': '623',
         '8811': '36217',
         '8832': '36258',
+        '8832NR': '36260',
         '8841': '683',
         '8845': '36224',
         '8851': '684',
         # '8851NR' : '36232',
+        # '8865NR': '36248',
         '8861': '685',
         '8865': '36225'
     }
 
     typeproduct_enums = []
     for key, value in typeproduct_dict.items():
-        if "7800_only" in request.form:
+        if "7800_only" in request.form and "8800_only" in request.form:
+            typeproduct_enums.append(value)
+        elif "7800_only" in request.form:
             if key.startswith('78'):
+                typeproduct_enums.append(value)
+        elif "8800_only" in request.form:
+            if key.startswith('88'):
                 typeproduct_enums.append(value)
         else:
             typeproduct_enums.append(value)
@@ -125,10 +132,14 @@ def getPhoneInfo():
                 if key.startswith('SEP'):
                     ris_lookup_list.append(key)
 
-            if "7800_only" in request.form:
-                print("Found the following 7800 series phones: " + str(ris_lookup_list))
-            else:
+            if "7800_only" in request.form and "8800_only" in request.form:
                 print("Found the following 7800 AND 8800 series phones: " + str(ris_lookup_list))
+            elif "7800_only" in request.form:
+                print("Found the following 7800 series phones: " + str(ris_lookup_list))
+            elif "8800_only" in request.form:
+                print("Found the following 8800 series phones: " + str(ris_lookup_list))
+            else:
+                print("NOTHING SELECTED - Default to both 7800 and 8800: " + str(ris_lookup_list))
 
         else:
             print("Cluster " + address + " Failed to connect to AXL")
@@ -453,6 +464,14 @@ def cloudReady(result_dict, full_details, typemodel_dict):
             elif model == typemodel_dict['7861'] and hw_ver >= 'V03':  # 7861 (V03 or later)
                 cloud_ready = 'Yes'
             elif model == typemodel_dict['7861']:
+                cloud_ready = 'No'
+            elif model == typemodel_dict['8832'] and hw_ver <= 'V07':  # 7861 (V07 or earlier)
+                cloud_ready = 'Yes'
+            elif model == typemodel_dict['8832']:
+                cloud_ready = 'No'
+            elif model == typemodel_dict['8832NR'] and hw_ver <= 'V07':  # 7861 (V07 or earlier)
+                cloud_ready = 'Yes'
+            elif model == typemodel_dict['8832NR']:
                 cloud_ready = 'No'
             else:
                 cloud_ready = 'Yes'
