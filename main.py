@@ -452,7 +452,7 @@ def cloudReady(result_dict, full_details, typemodel_dict):
             hw_ver = full_details[devicename]['hw_ver']
 
             if model == typemodel_dict['7821'] and hw_ver >= 'V03':  # 7821 (V03 or later but less than V25)
-                if hw_ver >= V25:
+                if hw_ver >= 'V25':
                     cloud_ready = 'No'
                 else:
                     cloud_ready = 'Yes'
