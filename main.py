@@ -468,14 +468,6 @@ def cloudReady(result_dict, full_details, typemodel_dict):
                 cloud_ready = 'Yes'
             elif model == typemodel_dict['7861']:
                 cloud_ready = 'No'
-            elif model == typemodel_dict['8832'] and hw_ver <= 'V07':  # 7861 (V07 or earlier)
-                cloud_ready = 'Yes'
-            elif model == typemodel_dict['8832']:
-                cloud_ready = 'No'
-            elif model == typemodel_dict['8832NR'] and hw_ver <= 'V07':  # 7861 (V07 or earlier)
-                cloud_ready = 'Yes'
-            elif model == typemodel_dict['8832NR']:
-                cloud_ready = 'No'
             else:
                 cloud_ready = 'Yes'
 
