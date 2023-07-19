@@ -33,6 +33,7 @@ def getPhoneInfo():
     address = request.form['address']
     username = request.form['username']
     password = urllib.parse.quote(request.form['password'])
+    axl_ver = request.form.get('axl_ver')
 
     # https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/MPP/MPP-conversion/enterprise-to-mpp/cuip_b_conversion-guide-ipphone/cuip_b_conversion-guide-ipphone_chapter_00.html
     # not eligible to migrate to MPP: 8821, 8851NR, 8865NR, and 8831 not supported for conversion (8832/8832NR only up to V07, not V08+)
@@ -90,13 +91,13 @@ def getPhoneInfo():
     axlquery = "SELECT device.pkid AS devicepkid, device.name, devicepool.name AS devicepoolname, typeproduct.enum as modelenum FROM device LEFT OUTER JOIN devicepool ON device.fkdevicepool = devicepool.pkid LEFT OUTER JOIN typeproduct ON device.tkproduct = typeproduct.enum where typeproduct.enum in (%s)" % (
         ','.join("'{0}'".format(x) for x in typeproduct_enums))
 
-    axl_header = {"Content-type": "text/xml", "SOAPAction": "CUCM:DB ver=11.0"}
-    header = {"Content-type": "text/xml", "SOAPAction": "CUCM:DB ver=11.0"}
+    axl_header = {"Content-type": "text/xml", "SOAPAction": "CUCM:DB ver={}".format(axl_ver)}
+    header = {"Content-type": "text/xml", "SOAPAction": "CUCM:DB ver={}".format(axl_ver)}
     axl_url = "https://%s:%s@%s:8443/axl/" % (username, password, address)
 
     try:
-        # a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery), timeout=10)
-        a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery))
+        # a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery, axl_ver), timeout=10)
+        a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery, axl_ver))
 
         dp = []
         axldevices = []
@@ -124,7 +125,7 @@ def getPhoneInfo():
 
             # enable web access for devices if selected
             if "webaccess" in request.form:
-                orig_webaccess_value = enableWebAccess(name_to_pkid, axl_url, s, header, address)
+                orig_webaccess_value = enableWebAccess(name_to_pkid, axl_url, s, header, address, axl_ver)
                 print("webaccess checked")
 
             ris_lookup_list = []
@@ -269,7 +270,7 @@ def getPhoneInfo():
 
     # put back web access after changing it to what is was originally if chosen to enable web access
     if "webaccess" in request.form:
-        revertWebAccess(orig_webaccess_value, axl_url, name_to_pkid, s, header, address)
+        revertWebAccess(orig_webaccess_value, axl_url, name_to_pkid, s, header, address, axl_ver)
 
     final_report, summary_report = cloudReady(result_dic, full_details, typemodel_dict)
 
@@ -286,14 +287,14 @@ def getPhoneInfo():
         return "Failed to connect to any phones to retrieve hardware version information.  Please make sure web access was turned on and phones are online and reachable using HTTP (port 80/TCP)."
 
 
-def formatSOAPQuery(query):
-    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/11.0"><soapenv:Header/><soapenv:Body><ns:executeSQLQuery><sql>%s</sql></ns:executeSQLQuery></soapenv:Body></soapenv:Envelope>' % query
+def formatSOAPQuery(query, axl_ver):
+    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/{}"><soapenv:Header/><soapenv:Body><ns:executeSQLQuery><sql>{}</sql></ns:executeSQLQuery></soapenv:Body></soapenv:Envelope>'.format(axl_ver, query)
 
     return soap_data
 
 
-def formatSOAPUpdate(query):
-    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/11.0"><soapenv:Header/><soapenv:Body><ns:executeSQLUpdate><sql>%s</sql></ns:executeSQLUpdate></soapenv:Body></soapenv:Envelope>' % query
+def formatSOAPUpdate(query, axl_ver):
+    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/{}"><soapenv:Header/><soapenv:Body><ns:executeSQLUpdate><sql>{}</sql></ns:executeSQLUpdate></soapenv:Body></soapenv:Envelope>'.format(axl_ver, query)
 
     return soap_data
 
@@ -366,7 +367,7 @@ def getHardwareVersion(result_dic):
     return hardware_info
 
 
-def enableWebAccess(name_to_pkid, axl_url, s, header, address):
+def enableWebAccess(name_to_pkid, axl_url, s, header, address, axl_ver):
     orig_webaccess_value = {}
 
     # pkid MUST be lowercase or it fails with
@@ -381,7 +382,7 @@ def enableWebAccess(name_to_pkid, axl_url, s, header, address):
 
         # read device xml here to save the original value of webaccess to put back later
         webaccessRead = "execute procedure dbreaddevicexml('" + str(pkid) + "')"
-        c = s.post(url=axl_url, verify=False, data=formatSOAPQuery(webaccessRead))
+        c = s.post(url=axl_url, verify=False, data=formatSOAPQuery(webaccessRead, axl_ver))
         # print("DEBUG DEBUG DEBUG " + c.text)
         # When setting &lt and &gt for AXL posts to work the return AXL data in a  get is escapated for the first character, not the second
         # Setting from the webpage sets the pages returned via AXL to <value> so catch both conditions
@@ -404,21 +405,20 @@ def enableWebAccess(name_to_pkid, axl_url, s, header, address):
         # webaccess 0 means enabled, 1 means disabled, need to escape the < > or else the XML tags are stripped by AXL before inserting into the DB
         webaccessON = "execute procedure dbwritedevicexml('" + str(pkid) + "','&lt;webAccess&gt;0&lt;/webAccess&gt;')"
         # print("URL " + str(webaccessON))
-        # print (formatSOAPUpdate(webaccessON))
-        y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessON))
+        # print (formatSOAPUpdate(webaccessON, axl_ver))
+        y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessON, axl_ver))
         if y.status_code == 200:
             print("Cluster %s: Successfully updated webaccess settings for %s" % (address, device))
         else:
             print("Cluster " + address + " : --- ERROR CODE 1 --- " + str(y.text))
 
-        applyConfig(device, s, axl_url, header, pkid)
+        applyConfig(device, s, axl_url, header, pkid, axl_ver)
 
     return orig_webaccess_value
 
 
-def applyConfig(devicename, session, axl_url, header, devicepkid):
-    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/11.0"><soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>%s</uuid></ns:applyPhone></soapenv:Body></soapenv:Envelope>''' % (
-        devicepkid)
+def applyConfig(devicename, session, axl_url, header, devicepkid, axl_ver):
+    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/{}"><soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>{}</uuid></ns:applyPhone></soapenv:Body></soapenv:Envelope>'''.format(axl_ver,devicepkid)
     z = session.post(url=axl_url, headers=header, verify=False, data=soap_data)
     if z.status_code != 200:
         print('*** ERROR *** Apply config failed for %s (%s)' % (devicename, devicepkid))
@@ -426,15 +426,15 @@ def applyConfig(devicename, session, axl_url, header, devicepkid):
         print('Apply config sent for %s (%s)' % (devicename, devicepkid))
 
 
-def revertWebAccess(orig_webaccess_value, axl_url, name_to_pkid, s, header, address):
+def revertWebAccess(orig_webaccess_value, axl_url, name_to_pkid, s, header, address, axl_ver):
     for pkid in orig_webaccess_value:
         webaccessChange = "execute procedure dbwritedevicexml(\'%s\', \'%s\')" % (pkid, orig_webaccess_value[pkid])
-        y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessChange))
+        y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessChange, axl_ver))
         if y.status_code == 200:
             for name, p in name_to_pkid.items():
                 if p == pkid:
                     print("Cluster %s: Successfully reverted webaccess settings for %s" % (address, name))
-                    applyConfig(name, s, axl_url, header, pkid)
+                    applyConfig(name, s, axl_url, header, pkid, axl_ver)
         else:
             print("Cluster " + str(address) + ": --- ERROR CODE 1 --- " + str(y.text))
 

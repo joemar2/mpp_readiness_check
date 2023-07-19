@@ -21,6 +21,15 @@
 	      <div class="panel-heading"><h4><img src="{{url_for('static', filename='Cisco_Logo.png')}}">  Unified Communications Manager Information</h4></div>
 	      <div class="panel-body">
 	<form method="POST" action="/phoneinfo">
+        <div style="margin-bottom: 10px;">
+            CUCM Version:
+          <select name="axl_ver" id="axl_ver">
+            <option value="14.0" selected>14.x</option>
+            <option value="12.0">12.x</option>
+            <option value="11.0">11.x</option>
+            <option value="10.0">10.x</option>
+          </select>
+        </div>
   <div class="form-group">
     <input type="username" name="address" class="form-control" id="address" placeholder="Server Address">
   </div>
@@ -57,7 +66,7 @@
       <p></p>
       <p><b><u>Notes</u></b></p>
       <p>If the webpage of the phone is not reachable because the phone is unregistered, the phone is registered through an Expressway using Mobile and Remote Access (MRA), or other connection failure, the resulting fields will display "unknown".</p>
-      <p align="right">v1.3.5</p>
+      <p align="right">v1.3.6</p>
   </div>
 </div>
 </div>
