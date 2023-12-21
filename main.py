@@ -123,11 +123,6 @@ def getPhoneInfo():
             name_to_dp = dict(zip(axldevices, dp))
             name_to_pkid = dict(zip(axldevices, pkids))
 
-            # enable web access for devices if selected
-            if "webaccess" in request.form:
-                orig_webaccess_value = enableWebAccess(name_to_pkid, axl_url, s, header, address, axl_ver)
-                print("webaccess checked")
-
             ris_lookup_list = []
             for key in name_to_dp:
                 if key.startswith('SEP'):
@@ -260,6 +255,12 @@ def getPhoneInfo():
                              'devicepool': name_to_dp[phone]}
     # print(str(result_dic))
 
+    # enable web access for devices if selected
+    if "webaccess" in request.form:
+        orig_devicexml = readDeviceXML(name_to_pkid, axl_url, s, header, address, axl_ver)
+        print('Saved original deviceXML settings')
+        updated_devicexml = updateDeviceXML(orig_devicexml, axl_url, s, header, address, axl_ver, name_to_pkid)
+
     # give the phones time to apply the web access setting change otherwise this happens too fast
     # webaccess will still be disabled without this when trying to check
     if "webaccess" in request.form:
@@ -270,7 +271,7 @@ def getPhoneInfo():
 
     # put back web access after changing it to what is was originally if chosen to enable web access
     if "webaccess" in request.form:
-        revertWebAccess(orig_webaccess_value, axl_url, name_to_pkid, s, header, address, axl_ver)
+        revertDeviceXML(orig_devicexml, axl_url, name_to_pkid, s, header, address, axl_ver, updated_devicexml)
 
     final_report, summary_report = cloudReady(result_dic, full_details, typemodel_dict)
 
@@ -366,77 +367,99 @@ def getHardwareVersion(result_dic):
     print("Hardware details for phones - " + str(hardware_info))
     return hardware_info
 
-
-def enableWebAccess(name_to_pkid, axl_url, s, header, address, axl_ver):
-    orig_webaccess_value = {}
-
-    # pkid MUST be lowercase or it fails with
+def readDeviceXML(name_to_pkid, axl_url, s, header, address, axl_ver):
     '''
-    2021-02-18 14:20:55,372 DEBUG [http-bio-1025-exec-16] servletRouters.AXLAlpha - <?xml version='1.0' encoding='UTF-8'?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"><soapenv:Body><soapenv:Fault><faultcode>soapenv:Client</faultcode><faultstring>Missing key in referenced table for referential constraint (informix.fk_devicexml4k_fkdevice).</faultstring><detail><axlError><axlcode>-691</axlcode><axlmessage>Missing key in referenced table for referential constraint (informix.fk_devicexml4k_fkdevice).</axlmessage><request>executeSQLUpdate</request></axlError></detail></soapenv:Fault></soapenv:Body></soapenv:Envelope>
-
-    2021-02-18 14:20:55,335 WARN  [http-bio-1025-exec-16] axlapiservice.ExecuteSqlHandler - java.sql.SQLException: Missing key in referenced table for referential constraint (informix.fk_devicexml4k_fkdevice).
+    orig_devicexml = {
+    'pkid' : {
+        'name': 'SEPABCDABCDABCD'
+        'xml' : '&lt;disableSpeaker&gt;false&lt;/disableSpeaker&gt;&lt;webAccess&gt;1&lt;/webAccess&gt;'
+        }
+    }
     '''
 
-    # Enable web access with the stored procedure
-    for device, pkid in name_to_pkid.items():
-
-        # read device xml here to save the original value of webaccess to put back later
+    orig_devicexml = {}
+    for name, pkid in name_to_pkid.items():
         webaccessRead = "execute procedure dbreaddevicexml('" + str(pkid) + "')"
         c = s.post(url=axl_url, verify=False, data=formatSOAPQuery(webaccessRead, axl_ver))
-        # print("DEBUG DEBUG DEBUG " + c.text)
-        # When setting &lt and &gt for AXL posts to work the return AXL data in a  get is escapated for the first character, not the second
-        # Setting from the webpage sets the pages returned via AXL to <value> so catch both conditions
-        if '<webAccess>' in c.text:
-            webaccess_setting = re.findall(r'<webAccess>[01]</webAccess>', c.text)
-            if "0" in webaccess_setting[0]:
-                orig_webaccess_value[pkid] = '&lt;webAccess&gt;0&lt;/webAccess&gt;'
-            elif "1" in webaccess_setting[0]:
-                orig_webaccess_value[pkid] = '&lt;webAccess&gt;1&lt;/webAccess&gt;'
-        # either nothing or a 1 means disabled
-        elif '&lt;webAccess>' in c.text:
-            webaccess_setting = re.findall(r'&lt;webAccess>[01]&lt;/webAccess>', c.text)
-            if "0" in webaccess_setting[0]:
-                orig_webaccess_value[pkid] = '&lt;webAccess&gt;0&lt;/webAccess&gt;'
-            elif "1" in webaccess_setting[0]:
-                orig_webaccess_value[pkid] = '&lt;webAccess&gt;1&lt;/webAccess&gt;'
+        soup = BeautifulSoup(c.text, 'xml')
+        devicexml = soup.find('expression')
+        formatted_xml = devicexml.text.replace('>', '&gt;').replace('<', '&lt;')
+        orig_devicexml[pkid] = {'name': name, 'xml': formatted_xml}
+
+    return orig_devicexml
+
+def updateDeviceXML(orig_devicexml, axl_url, s, header, address, axl_ver, name_to_pkid):
+    '''
+    updated_phonexml = {
+        'pkid': {
+            'name': 'SEPABCDABCDABCD',
+            'updatedxml': '&lt;disableSpeaker&gt;false&lt;/disableSpeaker&gt;&lt;webAccess&gt;0&lt;/webAccess&gt;'
+        }
+    }
+    '''
+    updated_phonexml = {}
+
+    for pkid in orig_devicexml:
+        if 'webAccess' in orig_devicexml[pkid]['xml']:
+            if '&lt;webAccess&gt;1&lt;/webAccess&gt;' in orig_devicexml[pkid]['xml']:
+                updated_phonexml[pkid] = {
+                    'name': orig_devicexml[pkid]['name'],
+                    'updatedxml': orig_devicexml[pkid]['xml'].replace('&lt;webAccess&gt;1&lt;/webAccess&gt;',\
+                                                                      '&lt;webAccess&gt;0&lt;/webAccess&gt;')
+                }
+            else:
+                updated_phonexml[pkid] = {
+                    'name': orig_devicexml[pkid]['name'],
+                    'updatedxml': None
+                }
         else:
-            orig_webaccess_value[pkid] = '&lt;webAccess&gt;1&lt;/webAccess&gt;'
+            updated_phonexml[pkid] = {
+                'name': orig_devicexml[pkid]['name'],
+                'updatedxml': orig_devicexml[pkid]['xml'] + '&lt;webAccess&gt;0&lt;/webAccess&gt;'
+            }
 
-        # webaccess 0 means enabled, 1 means disabled, need to escape the < > or else the XML tags are stripped by AXL before inserting into the DB
-        webaccessON = "execute procedure dbwritedevicexml('" + str(pkid) + "','&lt;webAccess&gt;0&lt;/webAccess&gt;')"
-        # print("URL " + str(webaccessON))
-        # print (formatSOAPUpdate(webaccessON, axl_ver))
-        y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessON, axl_ver))
-        if y.status_code == 200:
-            print("Cluster %s: Successfully updated webaccess settings for %s" % (address, device))
-        else:
-            print("Cluster " + address + " : --- ERROR CODE 1 --- " + str(y.text))
+        if updated_phonexml[pkid]['updatedxml'] is not None:
+            webaccessON = "execute procedure dbwritedevicexml('" + str(pkid) + "', '" + str(updated_phonexml[pkid]['updatedxml']) + "')"
 
-        applyConfig(device, s, axl_url, header, pkid, axl_ver)
+            y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessON, axl_ver))
+            if y.status_code == 200:
+                print("Cluster %s: Successfully updated webaccess settings for %s" % (address, str(updated_phonexml[pkid]['name'])))
+            else:
+                print("Cluster " + address + " : --- ERROR CODE 1 --- " + str(updated_phonexml[pkid]['name']) + " -- " + str(y.text))
 
-    return orig_webaccess_value
+    for phone_pkid in updated_phonexml:
+        if updated_phonexml[phone_pkid]['updatedxml'] is not None:
+            device_name = updated_phonexml[phone_pkid]['name']
+            applyConfig(device_name, s, axl_url, header, phone_pkid, axl_ver)
 
+    print("Done applying config to enable web access")
+
+    return updated_phonexml
 
 def applyConfig(devicename, session, axl_url, header, devicepkid, axl_ver):
-    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/{}"><soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>{}</uuid></ns:applyPhone></soapenv:Body></soapenv:Envelope>'''.format(axl_ver,devicepkid)
+    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope \
+    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/{}">\
+    <soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>{}</uuid></ns:applyPhone></soapenv:Body>\
+    </soapenv:Envelope>'''.format(axl_ver,devicepkid)
+
     z = session.post(url=axl_url, headers=header, verify=False, data=soap_data)
     if z.status_code != 200:
-        print('*** ERROR *** Apply config failed for %s (%s)' % (devicename, devicepkid))
+        if devicename.startswith("SEP"):
+            print('*** ERROR *** Apply config failed for %s (%s)' % (devicename, devicepkid))
     else:
         print('Apply config sent for %s (%s)' % (devicename, devicepkid))
 
 
-def revertWebAccess(orig_webaccess_value, axl_url, name_to_pkid, s, header, address, axl_ver):
-    for pkid in orig_webaccess_value:
-        webaccessChange = "execute procedure dbwritedevicexml(\'%s\', \'%s\')" % (pkid, orig_webaccess_value[pkid])
-        y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessChange, axl_ver))
-        if y.status_code == 200:
-            for name, p in name_to_pkid.items():
-                if p == pkid:
-                    print("Cluster %s: Successfully reverted webaccess settings for %s" % (address, name))
-                    applyConfig(name, s, axl_url, header, pkid, axl_ver)
-        else:
-            print("Cluster " + str(address) + ": --- ERROR CODE 1 --- " + str(y.text))
+def revertDeviceXML(orig_devicexml, axl_url, name_to_pkid, s, header, address, axl_ver, updated_devicexml):
+    for pkid in updated_devicexml:
+        if updated_devicexml[pkid]['updatedxml'] is not None:
+            webaccessRevert = "execute procedure dbwritedevicexml(\'%s\', \'%s\')" % (pkid, orig_devicexml[pkid]['xml'])
+            y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessRevert, axl_ver))
+            if y.status_code == 200:
+                print("Cluster %s: Successfully reverted webaccess settings for %s" % (address, orig_devicexml[pkid]['name']))
+                applyConfig(updated_devicexml[pkid]['name'], s, axl_url, header, pkid, axl_ver)
+            else:
+                print("Cluster " + str(address) + ": --- ERROR CODE 1 --- " + str(updated_phonexml[pkid]['name']) + " -- " + str(y.text))
 
 
 def cloudReady(result_dict, full_details, typemodel_dict):
