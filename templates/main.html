@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+ <head>
+  <meta charset="utf-8">
+  <title>
+   Cisco Cloud Readiness Check
+  </title>
+  <link rel="stylesheet" href="{{url_for('static', filename='css/bootstrap.min.css')}}">
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='font-awesome/css/fontawesome-all.min.css') }}">
+ </head>
+<body>
+   <style>
+     body {
+       padding: 20px;
+      }
+   </style>
+<div class="container">
+<div class="col-md-2"></div>
+<div class="col-md-8">
+<div class="panel panel-primary">
+	      <div class="panel-heading"><h4><img src="{{url_for('static', filename='Cisco_Logo.png')}}">  Unified Communications Manager Information</h4></div>
+	      <div class="panel-body">
+	<form method="POST" action="/phoneinfo">
+        <div style="margin-bottom: 10px;">
+            CUCM Version:
+          <select name="axl_ver" id="axl_ver">
+            <option value="15.0" >15.x</option>
+            <option value="14.0" selected>14.x</option>
+            <option value="12.0">12.x</option>
+            <option value="11.0">11.x</option>
+            <option value="10.0">10.x</option>
+          </select>
+        </div>
+  <div class="form-group">
+    <input type="username" name="address" class="form-control" id="address" placeholder="Server Address">
+  </div>
+	<div class="form-group">
+    <input type="username" name="username" class="form-control" id="username" placeholder="Administrator Username">
+  </div>
+  <div class="form-group">
+    <input type="password" name="password" class="form-control" id="password" placeholder="Administrator Password"> 
+  </div>
+        <div>
+            <input type="checkbox" id="webaccess" name="webaccess" value="true"> Enable Phone Web Access Temporarily (for best results)
+        </div><br>
+        <div>
+            <input type="checkbox" id="7800_only" name="7800_only" value="true" checked> Check 7800 series phones
+        </div><br>
+        <div>
+            <input type="checkbox" id="8800_only" name="8800_only" value="true" checked> Check 8800 series phones
+        </div><br>
+  <button id="button" type="submit" class="btn btn-primary" onclick="loading()">Submit</button>
+</form> 
+</div>
+</div>
+{% if wrong != "no" %}
+  <div class="alert alert-danger" role="alert">{{ wrong }}</div>
+{% endif %}
+<div class="panel panel-default">
+  <div class="panel-heading"><b>How this works:</b></div>
+  <div class="panel-body">
+      <p>This tool assists with determining which Cisco IP phones can be converted to Multiplatform phone (MPP) firmware to be used with <a href="https://www.cisco.com/c/en/us/solutions/collaboration/webex-calling/index.html">Cisco Webex Calling</a> or other approved third-party call control systems.  It works by connecting to Cisco Unified Communications Manager (CUCM) and finds all phone models that can run MPP firmware.  Those phone models are the Cisco 7811, 7821, 7832, 7841, 7861, 8811, 8832, 8832NR, 8841, 8845, 8851, 8861, and 8865.</p>
+      <p>Next it checks for hardware version restrictions as described in table 1 of the <a href="https://www.cisco.com/c/en/us/products/collateral/collaboration-endpoints/unified-ip-phone-7800-series/guide-c07-742786.html">Convert between Enterprise Firmware and Multiplatform Firmware for Cisco IP Phone 7800 and 8800 Series Guide</a>.</p>
+      <p>In order to determine the hardware version and serial number of each phone, web access has to be enabled.  The above checkbox <b>Enable Phone Web Access Temporarily</b> will turn on web access from CUCM and then perform an apply config.  This means <b>phones that had web access disabled will reset to enable web access</b>.  After checking the hardware version and serial number web access will be reverted back to it's original setting as it was prior to running this tool.  For best results check the "Enable Phone Web Access Temporarily" option.</p>
+      <p>The <b>check 7800 series phones</b> and <b>check 8800 series phones</b> will not change the web access settings or reset phones, unless "Enable Phone Web Access Temporarily" is enabled.  The device report will contain 7800 only, 8800 only, or both depending on the checkboxes selected. </p>
+      <p>The resulting phone details contains a column "MPP Supported" showing whether the hardware version supports MPP firmware.</p>
+      <p></p>
+      <p><b><u>Notes</u></b></p>
+      <p>If the webpage of the phone is not reachable because the phone is unregistered, the phone is registered through an Expressway using Mobile and Remote Access (MRA), or other connection failure, the resulting fields will display "unknown".</p>
+      <p align="right">v1.4.1</p>
+  </div>
+</div>
+</div>
+<div class="col-md-2"></div>
+</div>
+<script src="{{url_for('static', filename='js/bootstrap.min.js')}}"></script>
+<script>
+function loading() {
+    var btn = document.getElementById('button');
+    setTimeout(function() {btn.disabled = true;},10);
+    btn.innerHTML = '<i id="spinner" class="fas fa-spinner fa-pulse"></i> Running...';
+}
+
+function validate() {
+    if (document.getElementById('webaccess').checked) {
+        alert("WARNING! Phones will be reset to enable web access.  For best results check this option to temporarily enable web access on all phones.");
+    }
+}
+
+document.getElementById('webaccess').addEventListener('change', validate);
+</script>
+</body>
+</html>
