@@ -173,6 +173,9 @@ def getPhoneInfo():
                 wrong = "Invalid username or password"
                 return render_template("main.html", wrong=wrong)
 
+            #Allowed Device Queries Per Minute" value is 15 (60/15 = 4 sec between requests)
+            time.sleep(5)
+
         except (requests.exceptions.ConnectionError, requests.exceptions.ConnectTimeout):
             return render_template("main.html", wrong="Failed to connect to " + str(address))
 
