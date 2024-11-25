@@ -477,11 +477,8 @@ def cloudReady(result_dict, full_details, typemodel_dict):
         try:
             hw_ver = full_details[devicename]['hw_ver']
 
-            if model == typemodel_dict['7821'] and hw_ver != 'unknown' and hw_ver >= 'V03':  # 7821 (V03-V24, V26)
-                if hw_ver == 'V25':
-                    cloud_ready = 'No'
-                else:
-                    cloud_ready = 'Yes'
+            if model == typemodel_dict['7821'] and hw_ver != 'unknown' and hw_ver >= 'V03':  # 7821 (V03 or later)
+                cloud_ready = 'Yes'
             elif hw_ver == "unknown" and model in ['621', '622', '623','36258','36260']:  # unknown hw_ver and 7821/7841/7861/8832/8832NR
                 cloud_ready = "Unknown"
             elif model == typemodel_dict['7821']:
