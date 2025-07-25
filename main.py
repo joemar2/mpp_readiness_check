@@ -6,7 +6,7 @@ import requests, urllib.parse, re
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from bs4 import BeautifulSoup
 
-# http://stackoverflow.com/questions/32149892/flask-application-built-using-pyinstaller-not-rendering-index-html
+
 if getattr(sys, 'frozen', False):
     template_folder = os.path.join(sys._MEIPASS, 'templates')
     static_folder = os.path.join(sys._MEIPASS, 'static')
@@ -14,7 +14,7 @@ if getattr(sys, 'frozen', False):
 else:
     app = Flask(__name__)
 
-# app = Flask(__name__)
+
 
 webbrowser.open('http://localhost:5000')
 
@@ -36,7 +36,7 @@ def getPhoneInfo():
     axl_ver = request.form.get('axl_ver')
 
     # https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/MPP/MPP-conversion/enterprise-to-mpp/cuip_b_conversion-guide-ipphone/cuip_b_conversion-guide-ipphone_chapter_00.html
-    # not eligible to migrate to MPP: 8821 and 8831 not supported for conversion (8832/8832NR only up to V07, not V08+)
+
     typeproduct_dict = {
         '7811': '36665',
         '7821': '508',
@@ -153,7 +153,7 @@ def getPhoneInfo():
 
     all_ris_results = []
     print("Cluster " + address + ": Looking up phone IP addresses using RIS")
-    # print "RIS QUERY: " + str(risquery)
+
 
     first_ris = True
 
@@ -185,21 +185,21 @@ def getPhoneInfo():
     IPs = []
     SEP_list = []
 
-    # provide a big string of data to parse
+
     for data in all_ris_results:
-        # Only pull from the device name field, the description field could be found if the regex is not specific enough causing duplicates
+
         SEP = re.findall(r'<ns1:Name>SEP[A-Z0-9]+</ns1:Name>', data)
         SEP = re.findall(r'SEP[A-Z0-9]+', str(SEP))
         for found_sep in SEP:
             SEP_list.append(found_sep)
 
-        # get firmware version using beautiful soup
+
         soup = BeautifulSoup(data, 'xml')
         load = soup.find_all('ActiveLoadID')
         model = soup.find_all('Model')
         description = soup.find_all('Description')
 
-        # need to account for some devices will not print a firmware 7960 example but is in our device list so a blank has to be counted to align IP/Device/Firmware
+
         for firmware in load:
             h = BeautifulSoup(str(firmware), 'xml')
             FW.append(h.find('ActiveLoadID').text)
@@ -243,11 +243,7 @@ def getPhoneInfo():
             print("Cluster " + address + ": Ignore " + str(item) + " because it is unregistered")
             continue
 
-    # print IP_list
-    # print name_ip_lookup
-    # print name_fw_lookup
-    # print name_model_lookup
-    # print name_description_lookup
+
     result_dic = {}
 
     for phone in name_ip_lookup:
@@ -256,7 +252,7 @@ def getPhoneInfo():
                              'model': name_model_lookup[phone],
                              'description': name_description_lookup[phone],
                              'devicepool': name_to_dp[phone]}
-    # print(str(result_dic))
+
 
     # enable web access for devices if selected
     if "webaccess" in request.form:
@@ -272,7 +268,7 @@ def getPhoneInfo():
 
     full_details = getHardwareVersion(result_dic)
 
-    # put back web access after changing it to what is was originally if chosen to enable web access
+    # put back web access after changing it to what it was originally if chosen to enable web access
     if "webaccess" in request.form:
         revertDeviceXML(orig_devicexml, axl_url, name_to_pkid, s, header, address, axl_ver, updated_devicexml)
 
@@ -307,10 +303,7 @@ def formatRISQuery(device_list):
     ris_queries_list = []
 
     # if over 1000, split into 1000 devices at a time, since that is the maximum in a request
-    # https://stackoverflow.com/questions/3950079/paging-python-lists-in-slices-of-4-items
     split_device_list = [device_list[i:i + 1000] for i in range(0, len(device_list), 1000)]
-    # for testing to make sure I hit the limit and split requests and then combine the results later
-    # split_device_list = [device_list[i:i + 5] for i in range(0, len(device_list), 5)]
 
     for chunk in split_device_list:
         q = ""
@@ -466,9 +459,6 @@ def revertDeviceXML(orig_devicexml, axl_url, name_to_pkid, s, header, address, a
 
 
 def cloudReady(result_dict, full_details, typemodel_dict):
-    # final_report = cloudReady(result_dic, full_details)
-    # result_dict = {'SEPB000B4BA1DFA': {'ip': '10.2.2.24', 'firmware': 'sip88xx.14-0-1MN-1036', 'model': '684', 'description': 'Auto 1003', 'devicepool': 'Default'}}
-    # full_details = {'SEPB000B4BA1DFA': {'serial': 'FCH18219LDW', 'hw_ver': 'V01'}}
 
     final_report = {}
 
@@ -477,22 +467,41 @@ def cloudReady(result_dict, full_details, typemodel_dict):
         try:
             hw_ver = full_details[devicename]['hw_ver']
 
-            if model == typemodel_dict['7821'] and hw_ver != 'unknown' and hw_ver >= 'V03':  # 7821 (V03 or later)
-                cloud_ready = 'Yes'
-            elif hw_ver == "unknown" and model in ['621', '622', '623','36258','36260']:  # unknown hw_ver and 7821/7841/7861/8832/8832NR
-                cloud_ready = "Unknown"
-            elif model == typemodel_dict['7821']:
-                cloud_ready = 'No'
-            elif model == typemodel_dict['7841'] and hw_ver >= 'V04':  # 7841 (V04 or later)
-                cloud_ready = 'Yes'
-            elif model == typemodel_dict['7841']:
-                cloud_ready = 'No'
-            elif model == typemodel_dict['7861'] and hw_ver >= 'V03':  # 7861 (V03 or later)
-                cloud_ready = 'Yes'
-            elif model == typemodel_dict['7861']:
-                cloud_ready = 'No'
+            if hw_ver == "unknown":
+                if model in ['36213', '36247', '36258', '36260']:  # 7811, 7832, 8832, 8832NR (All VIDs)
+                    cloud_ready = "Yes"
+                elif model in ['36224', '36225', '36248']:  # 8845, 8865, 8865NR (All VIDs)
+                    cloud_ready = "No"
+                else:
+                    cloud_ready = "unknown"
             else:
-                cloud_ready = 'Yes'
+                if model == typemodel_dict['7811']:  # 7811 (All VIDs)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['7821'] and hw_ver >= 'V03':  # 7821 (V03 or later)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['7832']:  # 7832 (All VIDs)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['7841'] and hw_ver >= 'V04':  # 7841 (V04 or later)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['7861'] and hw_ver >= 'V03':  # 7861 (V03 or later)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['8811'] and hw_ver >= 'V15':  # 8811 (V15 or later)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['8832']:  # 8832 (All VIDs)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['8832NR']:  # 8832NR (All VIDs)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['8841'] and hw_ver >= 'V15':  # 8841 (V15 or later)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['8851'] and hw_ver >= 'V15':  # 8851 (V15 or later)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['8851NR'] and test[
+                    'hw_ver'] >= 'V15':  # 8851NR (V15 or later)
+                    cloud_ready = "Yes"
+                elif model == typemodel_dict['8861'] and hw_ver >= 'V15':  # 8861 (V15 or later)
+                    cloud_ready = "Yes"
+                else:  # 8845, 8865, 8865NR (All VIDs)
+                    cloud_ready = "No"
 
             for k, v in typemodel_dict.items():
                 if v == result_dict[devicename]['model']:
