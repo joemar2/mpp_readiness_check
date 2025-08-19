@@ -471,7 +471,9 @@ def cloudReady(result_dict, full_details, typemodel_dict):
                 if model in ['36213', '36247', '36258', '36260']:  # 7811, 7832, 8832, 8832NR (All VIDs)
                     cloud_ready = "Yes"
                 elif model in ['36224', '36225', '36248']:  # 8845, 8865, 8865NR (All VIDs)
-                    cloud_ready = "No"
+                    cloud_ready = "Yes\u00b2"
+                elif model in ['36217', '683', '684', '36232', '685']:  # 8811, 8841, 8851, 8851NR, 8861
+                    cloud_ready = "unknown\u00b3"
                 else:
                     cloud_ready = "unknown"
             else:
@@ -487,20 +489,35 @@ def cloudReady(result_dict, full_details, typemodel_dict):
                     cloud_ready = "Yes"
                 elif model == typemodel_dict['8811'] and hw_ver >= 'V15':  # 8811 (V15 or later)
                     cloud_ready = "Yes"
+                elif model == typemodel_dict['8811'] and hw_ver <= 'V14':  # 8811 (V14 or earlier)
+                    cloud_ready = "Yes\u00B9"
                 elif model == typemodel_dict['8832']:  # 8832 (All VIDs)
                     cloud_ready = "Yes"
                 elif model == typemodel_dict['8832NR']:  # 8832NR (All VIDs)
                     cloud_ready = "Yes"
                 elif model == typemodel_dict['8841'] and hw_ver >= 'V15':  # 8841 (V15 or later)
                     cloud_ready = "Yes"
+                elif model == typemodel_dict['8841'] and hw_ver <= 'V14':  # 8841 (V14 or earlier)
+                    cloud_ready = "Yes\u00B9"
+                elif model == typemodel_dict['8845']:  # 8845
+                    cloud_ready = "Yes\u00b2"
                 elif model == typemodel_dict['8851'] and hw_ver >= 'V15':  # 8851 (V15 or later)
                     cloud_ready = "Yes"
-                elif model == typemodel_dict['8851NR'] and test[
-                    'hw_ver'] >= 'V15':  # 8851NR (V15 or later)
+                elif model == typemodel_dict['8851'] and hw_ver <= 'V14':  # 8851 (V14 or earlier)
+                    cloud_ready = "Yes\u00B9"
+                elif model == typemodel_dict['8851NR'] and hw_ver >= 'V15':  # 8851NR (V15 or later)
                     cloud_ready = "Yes"
+                elif model == typemodel_dict['8851NR'] and hw_ver <= 'V14':  # 8851NR (V14 or earlier)
+                    cloud_ready = "Yes\u00B9"
                 elif model == typemodel_dict['8861'] and hw_ver >= 'V15':  # 8861 (V15 or later)
                     cloud_ready = "Yes"
-                else:  # 8845, 8865, 8865NR (All VIDs)
+                elif model == typemodel_dict['8861'] and hw_ver <= 'V14':  # 8861 (V14 or earlier)
+                    cloud_ready = "Yes\u00B9"
+                elif model == typemodel_dict['8865']:  # 8865
+                    cloud_ready = "Yes\u00b2"
+                elif model == typemodel_dict['8865NR']:  # 8865NR
+                    cloud_ready = "Yes\u00b2"
+                else:  # 7821 before V03, 7841 before V04, 7861 before V03
                     cloud_ready = "No"
 
             for k, v in typemodel_dict.items():
