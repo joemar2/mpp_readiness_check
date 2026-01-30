@@ -473,7 +473,7 @@ def cloudReady(result_dict, full_details, typemodel_dict):
                 elif model in ['36224', '36225', '36248']:  # 8845, 8865, 8865NR (All VIDs)
                     cloud_ready = "Yes\u00b2"
                 elif model in ['36217', '683', '684', '36232', '685']:  # 8811, 8841, 8851, 8851NR, 8861
-                    cloud_ready = "unknown\u00b3"
+                    cloud_ready = "Yes\u00b3"
                 else:
                     cloud_ready = "unknown"
             else:
