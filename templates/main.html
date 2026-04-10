@@ -1,93 +1,508 @@
 <!doctype html>
-<html>
- <head>
+<html lang="en">
+<head>
   <meta charset="utf-8">
-  <title>
-   Cisco Cloud Readiness Check
-  </title>
-  <link rel="stylesheet" href="{{url_for('static', filename='css/bootstrap.min.css')}}">
-  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='font-awesome/css/fontawesome-all.min.css') }}">
- </head>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cisco MPP Readiness Check</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Figtree:wght@400;500;600&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0c1222;
+      --bg-secondary: #111a2e;
+      --bg-card: #162038;
+      --bg-input: #0e1628;
+      --border: rgba(0, 188, 235, 0.10);
+      --border-focus: rgba(0, 188, 235, 0.45);
+      --accent: #00bceb;
+      --accent-glow: rgba(0, 188, 235, 0.15);
+      --text: #d8e2ef;
+      --text-muted: #5a6d8a;
+      --text-heading: #f1f5f9;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --font-heading: 'Sora', sans-serif;
+      --font-body: 'Figtree', sans-serif;
+      --font-mono: 'Source Code Pro', monospace;
+    }
+
+    [data-theme="light"] {
+      --bg-primary: #f0f2f5;
+      --bg-secondary: #e4e7ec;
+      --bg-card: #ffffff;
+      --bg-input: #f8f9fb;
+      --border: rgba(0, 0, 0, 0.12);
+      --border-focus: rgba(0, 140, 180, 0.45);
+      --accent: #0078a7;
+      --accent-glow: rgba(0, 120, 167, 0.10);
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --text-heading: #0f172a;
+      --success: #16a34a;
+      --warning: #d97706;
+      --danger: #dc2626;
+    }
+    [data-theme="light"] body { background-image: none; }
+    [data-theme="light"] .logo-row img { filter: brightness(0); }
+
+    .theme-toggle {
+      position: fixed;
+      top: 16px;
+      right: 20px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      color: var(--text-muted);
+      font-family: var(--font-body);
+      font-size: 0.78rem;
+      cursor: pointer;
+      z-index: 100;
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
+    }
+    .theme-toggle:hover { border-color: var(--accent); color: var(--accent); }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg-primary);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background-image:
+        radial-gradient(ellipse at 20% 50%, rgba(0,188,235,0.04) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 20%, rgba(0,188,235,0.03) 0%, transparent 50%);
+    }
+
+    .container { width: 100%; max-width: 560px; }
+
+    /* Logo */
+    .logo-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 1.75rem;
+    }
+    .logo-row img {
+      height: 56px;
+      filter: brightness(0) invert(1);
+      opacity: 0.92;
+    }
+    .logo-row h1 {
+      font-family: var(--font-heading);
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text-heading);
+      letter-spacing: -0.02em;
+    }
+
+    /* Card */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 2rem 2.25rem;
+      box-shadow: 0 4px 40px rgba(0,0,0,0.25), 0 0 80px var(--accent-glow);
+      animation: fadeUp 0.5s ease-out;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Form elements */
+    label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="password"], select {
+      width: 100%;
+      padding: 11px 14px;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--font-body);
+      font-size: 0.95rem;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      outline: none;
+    }
+    input:focus, select:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+    .form-group { margin-bottom: 1.1rem; }
+
+    /* Version select row */
+    .version-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 1.25rem;
+    }
+    .version-row label { margin-bottom: 0; white-space: nowrap; }
+    .version-row select {
+      width: auto;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+    select option { background: var(--bg-card); color: var(--text); }
+
+    /* Checkboxes */
+    .checkbox-group { margin: 1.25rem 0; display: flex; flex-direction: column; gap: 12px; }
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 0.92rem;
+      color: var(--text);
+    }
+    .checkbox-label input[type="checkbox"] { display: none; }
+    .check-box {
+      width: 20px; height: 20px;
+      border: 1.5px solid var(--text-muted);
+      border-radius: 5px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .checkbox-label input:checked + .check-box {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .check-box::after {
+      content: '';
+      width: 5px; height: 9px;
+      border: solid var(--bg-primary);
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg) translateY(-1px);
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .checkbox-label input:checked + .check-box::after { opacity: 1; }
+
+    /* Submit button */
+    .btn-submit {
+      width: 100%;
+      padding: 13px;
+      background: linear-gradient(135deg, var(--accent), #0090b8);
+      border: none;
+      border-radius: 8px;
+      color: #fff;
+      font-family: var(--font-heading);
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.2s;
+      letter-spacing: 0.02em;
+      margin-top: 0.5rem;
+    }
+    .btn-submit:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(0,188,235,0.3); }
+    .btn-submit:active { transform: translateY(0); }
+    .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+    /* Error alert */
+    .alert-error {
+      background: rgba(239,68,68,0.12);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: #fca5a5;
+      font-size: 0.88rem;
+      margin-top: 1rem;
+    }
+
+    /* Info panel */
+    .info-panel {
+      margin-top: 1.5rem;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.5rem;
+      animation: fadeUp 0.5s ease-out 0.15s both;
+    }
+    .info-panel h3 {
+      font-family: var(--font-heading);
+      font-size: 0.85rem;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+      letter-spacing: 0.03em;
+    }
+    .info-panel p { font-size: 0.84rem; line-height: 1.6; color: var(--text-muted); margin-bottom: 0.6rem; }
+    .info-panel a { color: var(--accent); text-decoration: none; }
+    .info-panel a:hover { text-decoration: underline; }
+    .version-tag { float: right; font-size: 0.75rem; color: var(--text-muted); }
+
+    /* ── Progress Section ── */
+    #progress-section { display: none; }
+    #progress-section.active { display: block; }
+
+    .progress-header {
+      font-family: var(--font-heading);
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-heading);
+      margin-bottom: 1.5rem;
+    }
+    .progress-track {
+      width: 100%;
+      height: 10px;
+      background: var(--bg-input);
+      border-radius: 99px;
+      overflow: hidden;
+      margin-bottom: 1rem;
+    }
+    .progress-bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 99px;
+      background: linear-gradient(90deg, var(--accent), #0de5a8);
+      transition: width 0.6s ease;
+      position: relative;
+    }
+    .progress-bar::after {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      animation: shimmer 1.8s infinite;
+    }
+    @keyframes shimmer {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(100%); }
+    }
+    .progress-percent {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--accent);
+      text-align: right;
+      margin-bottom: 0.25rem;
+    }
+    .progress-step {
+      font-size: 0.9rem;
+      color: var(--text);
+      margin-bottom: 1.25rem;
+    }
+
+    /* Status log */
+    .status-log {
+      background: #080d18;
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 8px;
+      padding: 14px 16px;
+      max-height: 220px;
+      overflow-y: auto;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.75;
+      color: var(--text-muted);
+    }
+    .status-log::-webkit-scrollbar { width: 5px; }
+    .status-log::-webkit-scrollbar-track { background: transparent; }
+    .status-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+    .log-entry { opacity: 0; animation: logIn 0.3s ease forwards; }
+    @keyframes logIn { to { opacity: 1; } }
+    .log-prefix { color: var(--accent); margin-right: 6px; }
+  </style>
+</head>
 <body>
-   <style>
-     body {
-       padding: 20px;
-      }
-   </style>
+<button class="theme-toggle" onclick="toggleTheme()"></button>
+<script>
+(function() {
+  var saved = localStorage.getItem('theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  var btn = document.querySelector('.theme-toggle');
+  btn.textContent = saved === 'dark' ? '\u2600 Light' : '\u263E Dark';
+})();
+function toggleTheme() {
+  var current = document.documentElement.getAttribute('data-theme');
+  var next = current === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('theme', next);
+  var btn = document.querySelector('.theme-toggle');
+  btn.textContent = next === 'dark' ? '\u2600 Light' : '\u263E Dark';
+}
+</script>
 <div class="container">
-<div class="col-md-2"></div>
-<div class="col-md-8">
-<div class="panel panel-primary">
-	      <div class="panel-heading"><h4><img src="{{url_for('static', filename='Cisco_Logo.png')}}">  Unified Communications Manager Information</h4></div>
-	      <div class="panel-body">
-	<form method="POST" action="/phoneinfo">
-        <div style="margin-bottom: 10px;">
-            CUCM Version:
+
+  <!-- FORM SECTION -->
+  <div id="form-section">
+    <div class="card">
+      <div class="logo-row">
+        <img src="{{url_for('static', filename='Cisco_Logo.png')}}" alt="Cisco">
+        <h1>MPP Readiness Check</h1>
+      </div>
+
+      <form id="mainForm" method="POST" action="/phoneinfo">
+        <div class="version-row">
+          <label>CUCM Version</label>
           <select name="axl_ver" id="axl_ver">
-            <option value="15.0" >15.x</option>
-            <option value="14.0" selected>14.x</option>
+            <option value="15.0" selected>15.x</option>
+            <option value="14.0">14.x</option>
+            <option value="12.5">12.5</option>
             <option value="12.0">12.x</option>
-            <option value="11.0">11.x</option>
-            <option value="10.0">10.x</option>
           </select>
         </div>
-  <div class="form-group">
-    <input type="username" name="address" class="form-control" id="address" placeholder="Server Address">
+
+        <div class="form-group">
+          <label for="address">Server Address</label>
+          <input type="text" name="address" id="address" placeholder="cucm.example.com" required>
+        </div>
+        <div class="form-group">
+          <label for="username">Administrator Username</label>
+          <input type="text" name="username" id="username" placeholder="admin" required>
+        </div>
+        <div class="form-group">
+          <label for="password">Administrator Password</label>
+          <input type="password" name="password" id="password" placeholder="Enter password" required>
+        </div>
+
+        <div class="checkbox-group">
+          <label class="checkbox-label" id="webaccess-label">
+            <input type="checkbox" id="webaccess" name="webaccess" value="true">
+            <span class="check-box"></span>
+            Enable Phone Web Access Temporarily
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="7800_only" name="7800_only" value="true" checked>
+            <span class="check-box"></span>
+            Check 7800 series phones
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="8800_only" name="8800_only" value="true" checked>
+            <span class="check-box"></span>
+            Check 8800 series phones
+          </label>
+        </div>
+
+        <button id="submitBtn" type="submit" class="btn-submit">Run Readiness Check</button>
+      </form>
+
+      {% if wrong != "no" %}
+        <div class="alert-error">{{ wrong }}</div>
+      {% endif %}
+    </div>
+
+    <div class="info-panel">
+      <h3>HOW THIS WORKS</h3>
+      <p>This tool connects to Cisco Unified Communications Manager (CUCM) and identifies all 7800/8800 series phones eligible for <a href="https://www.cisco.com/c/en/us/solutions/collaboration/webex-calling/index.html">Webex Calling</a> MPP firmware conversion.</p>
+      <p>It checks hardware version restrictions per <a href="https://www.cisco.com/c/en/us/products/collateral/collaboration-endpoints/unified-ip-phone-7800-series/guide-c07-742786.html">Cisco's conversion guide</a>. Enabling web access temporarily will reset phones with web access disabled, then revert settings after checking.</p>
+      <p>If a phone is unreachable (unregistered, MRA, etc.), fields will show "unknown".</p>
+      <span class="version-tag">v3.0.0</span>
+    </div>
   </div>
-	<div class="form-group">
-    <input type="username" name="username" class="form-control" id="username" placeholder="Administrator Username">
+
+  <!-- PROGRESS SECTION -->
+  <div id="progress-section">
+    <div class="card">
+      <div class="logo-row">
+        <img src="{{url_for('static', filename='Cisco_Logo.png')}}" alt="Cisco">
+        <h1>MPP Readiness Check</h1>
+      </div>
+      <div class="progress-header">Processing...</div>
+      <div class="progress-percent" id="pct-text">0%</div>
+      <div class="progress-track">
+        <div class="progress-bar" id="pbar"></div>
+      </div>
+      <div class="progress-step" id="step-text">Initializing...</div>
+      <div class="status-log" id="status-log"></div>
+    </div>
   </div>
-  <div class="form-group">
-    <input type="password" name="password" class="form-control" id="password" placeholder="Administrator Password"> 
-  </div>
-        <div>
-            <input type="checkbox" id="webaccess" name="webaccess" value="true"> Enable Phone Web Access Temporarily (for best results)
-        </div><br>
-        <div>
-            <input type="checkbox" id="7800_only" name="7800_only" value="true" checked> Check 7800 series phones
-        </div><br>
-        <div>
-            <input type="checkbox" id="8800_only" name="8800_only" value="true" checked> Check 8800 series phones
-        </div><br>
-  <button id="button" type="submit" class="btn btn-primary" onclick="loading()">Submit</button>
-</form> 
+
 </div>
-</div>
-{% if wrong != "no" %}
-  <div class="alert alert-danger" role="alert">{{ wrong }}</div>
-{% endif %}
-<div class="panel panel-default">
-  <div class="panel-heading"><b>How this works:</b></div>
-  <div class="panel-body">
-      <p>This tool assists with determining which Cisco IP phones can be converted to Multiplatform phone (MPP) firmware to be used with <a href="https://www.cisco.com/c/en/us/solutions/collaboration/webex-calling/index.html">Cisco Webex Calling</a> or other approved third-party call control systems.  It works by connecting to Cisco Unified Communications Manager (CUCM) and finds all phone models that can run MPP firmware.  Those phone models are the Cisco 7811, 7821, 7832, 7841, 7861, 8811, 8832, 8832NR, 8841, 8845, 8851, 8851NR, 8861, 8865, and 8865NR.</p>
-      <p>Next it checks for hardware version restrictions as described in table 1 of the <a href="https://www.cisco.com/c/en/us/products/collateral/collaboration-endpoints/unified-ip-phone-7800-series/guide-c07-742786.html">Convert between Enterprise Firmware and Multiplatform Firmware for Cisco IP Phone 7800 and 8800 Series Guide</a>.</p>
-      <p>In order to determine the hardware version and serial number of each phone, web access has to be enabled.  The above checkbox <b>Enable Phone Web Access Temporarily</b> will turn on web access from CUCM and then perform an apply config.  This means <b>phones that had web access disabled will reset to enable web access</b>.  After checking the hardware version and serial number web access will be reverted back to it's original setting as it was prior to running this tool.  For best results check the "Enable Phone Web Access Temporarily" option.</p>
-      <p>The <b>check 7800 series phones</b> and <b>check 8800 series phones</b> will not change the web access settings or reset phones, unless "Enable Phone Web Access Temporarily" is enabled.  The device report will contain 7800 only, 8800 only, or both depending on the checkboxes selected. </p>
-      <p>The resulting phone details contains a column "MPP Supported" showing whether the hardware version supports MPP firmware.</p>
-      <p></p>
-      <p><b><u>Notes</u></b></p>
-      <p>If the webpage of the phone is not reachable because the phone is unregistered, the phone is registered through an Expressway using Mobile and Remote Access (MRA), or other connection failure, the resulting fields will display "unknown".</p>
-      <p align="right">v2.1.2</p>
-  </div>
-</div>
-</div>
-<div class="col-md-2"></div>
-</div>
-<script src="{{url_for('static', filename='js/bootstrap.min.js')}}"></script>
+
 <script>
-function loading() {
-    var btn = document.getElementById('button');
-    setTimeout(function() {btn.disabled = true;},10);
-    btn.innerHTML = '<i id="spinner" class="fas fa-spinner fa-pulse"></i> Running...';
-}
+  var isProcessing = false;
+  var pollTimer = null;
 
-function validate() {
-    if (document.getElementById('webaccess').checked) {
-        alert("WARNING! Phones will be reset to enable web access.  For best results check this option to temporarily enable web access on all phones.");
+  document.getElementById('webaccess').addEventListener('change', function() {
+    if (this.checked) {
+      alert('WARNING: Phones will be reset to enable web access. For best results, check this option to temporarily enable web access on all phones.');
     }
-}
+  });
 
-document.getElementById('webaccess').addEventListener('change', validate);
+  document.getElementById('mainForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    isProcessing = true;
+
+    document.getElementById('form-section').style.display = 'none';
+    var progressEl = document.getElementById('progress-section');
+    progressEl.style.display = 'block';
+    progressEl.classList.add('active');
+
+    pollTimer = setInterval(pollProgress, 1500);
+
+    var formData = new FormData(this);
+    fetch('/phoneinfo', { method: 'POST', body: formData })
+      .then(function(resp) { return resp.text(); })
+      .then(function(html) {
+        isProcessing = false;
+        if (pollTimer) clearInterval(pollTimer);
+        document.open();
+        document.write(html);
+        document.close();
+      })
+      .catch(function(err) {
+        isProcessing = false;
+        if (pollTimer) clearInterval(pollTimer);
+        document.getElementById('step-text').textContent = 'Error: ' + err.message;
+        document.getElementById('step-text').style.color = 'var(--danger)';
+      });
+  });
+
+  function pollProgress() {
+    fetch('/progress')
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        document.getElementById('pbar').style.width = data.percent + '%';
+        document.getElementById('pct-text').textContent = data.percent + '%';
+        document.getElementById('step-text').textContent = data.step || 'Initializing...';
+
+        var logEl = document.getElementById('status-log');
+        var currentEntries = logEl.children.length;
+        if (data.log && data.log.length > currentEntries) {
+          for (var i = currentEntries; i < data.log.length; i++) {
+            var entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = '<span class="log-prefix">&gt;</span>' + escapeHtml(data.log[i]);
+            logEl.appendChild(entry);
+          }
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        if (data.status === 'error') {
+          document.getElementById('step-text').style.color = 'var(--danger)';
+          if (pollTimer) clearInterval(pollTimer);
+        }
+      })
+      .catch(function() {});
+  }
+
+  function escapeHtml(text) {
+    var d = document.createElement('div');
+    d.textContent = text;
+    return d.innerHTML;
+  }
+
+  window.addEventListener('beforeunload', function(e) {
+    if (isProcessing) {
+      e.preventDefault();
+      e.returnValue = 'Processing is in progress. Settings changes may not be reverted if you leave now. Are you sure?';
+      return e.returnValue;
+    }
+  });
 </script>
 </body>
 </html>

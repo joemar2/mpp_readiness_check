@@ -1,19 +1,142 @@
-from flask import Flask, render_template, request
-from werkzeug.utils import secure_filename
+from flask import Flask, render_template, request, jsonify
 import webbrowser
-import sys, os, time, csv
-import requests, urllib.parse, re
+import sys, os, time, csv, threading, signal, atexit
+import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from requests import Session
+from requests.auth import HTTPBasicAuth
 from requests.packages.urllib3.exceptions import InsecureRequestWarning
 from bs4 import BeautifulSoup
+from zeep import Client, Settings
+from zeep.transports import Transport
+from lxml import etree
 
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
 
 if getattr(sys, 'frozen', False):
     template_folder = os.path.join(sys._MEIPASS, 'templates')
     static_folder = os.path.join(sys._MEIPASS, 'static')
+    _base_dir = sys._MEIPASS
     app = Flask(__name__, template_folder=template_folder, static_folder=static_folder)
 else:
+    _base_dir = os.path.dirname(os.path.abspath(__file__))
     app = Flask(__name__)
 
+
+def _get_axl_wsdl_path(axl_ver):
+    """Resolve the local AXL WSDL path for the given CUCM version.
+    Falls back to 'current' if the version directory doesn't exist."""
+    wsdl_dir = os.path.join(_base_dir, 'AXL_WSDL')
+    ver_dir = os.path.join(wsdl_dir, axl_ver)
+    if not os.path.isdir(ver_dir):
+        ver_dir = os.path.join(wsdl_dir, 'current')
+    wsdl_file = os.path.join(ver_dir, 'AXLAPI.wsdl')
+    if not os.path.isfile(wsdl_file):
+        return None
+    return wsdl_file
+
+
+def _check_axl_fault(response):
+    """Check a raw AXL response for SOAP faults. Raises Exception if a fault is found."""
+    if response.status_code != 200:
+        soup = BeautifulSoup(response.content, 'xml')
+        fault = soup.find('faultstring')
+        msg = fault.text if fault else ('HTTP %d' % response.status_code)
+        raise Exception(msg)
+
+
+# Web access revert state: stored when web access is modified so cleanup
+# handlers can revert settings if the process is interrupted.
+_revert_lock = threading.Lock()
+_revert_state = {
+    'pending': False,
+    'orig_devicexml': None,
+    'updated_devicexml': None,
+    'name_to_pkid': None,
+    'axl_service': None,
+    'address': None
+}
+
+
+def _set_revert_state(orig_devicexml, updated_devicexml, name_to_pkid, axl_service, address):
+    with _revert_lock:
+        _revert_state['pending'] = True
+        _revert_state['orig_devicexml'] = orig_devicexml
+        _revert_state['updated_devicexml'] = updated_devicexml
+        _revert_state['name_to_pkid'] = name_to_pkid
+        _revert_state['axl_service'] = axl_service
+        _revert_state['address'] = address
+
+
+def _clear_revert_state():
+    with _revert_lock:
+        _revert_state['pending'] = False
+        _revert_state['orig_devicexml'] = None
+        _revert_state['updated_devicexml'] = None
+        _revert_state['name_to_pkid'] = None
+        _revert_state['axl_service'] = None
+        _revert_state['address'] = None
+
+
+def _emergency_revert():
+    """Attempt to revert web access settings during shutdown."""
+    with _revert_lock:
+        if not _revert_state['pending']:
+            return
+        _revert_state['pending'] = False
+    print("\n*** EMERGENCY REVERT: Restoring original web access settings ***")
+    try:
+        revertDeviceXML(
+            _revert_state['orig_devicexml'],
+            _revert_state['axl_service'],
+            _revert_state['address'],
+            _revert_state['updated_devicexml'],
+            _revert_state['name_to_pkid']
+        )
+        print("*** EMERGENCY REVERT: Successfully restored web access settings ***")
+    except Exception as e:
+        print("*** EMERGENCY REVERT FAILED: %s ***" % str(e))
+        print("*** You may need to manually revert web access in CUCM Admin ***")
+
+
+def _signal_handler(signum, frame):
+    """Handle SIGTERM/SIGINT by reverting web access before exit."""
+    sig_name = 'SIGTERM' if signum == signal.SIGTERM else 'SIGINT'
+    print("\n*** Received %s, cleaning up... ***" % sig_name)
+    _emergency_revert()
+    sys.exit(1)
+
+
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
+atexit.register(_emergency_revert)
+
+
+# Progress tracking
+_progress_lock = threading.Lock()
+_progress_state = {
+    'status': 'idle',
+    'step': '',
+    'percent': 0,
+    'log': []
+}
+
+
+def update_progress(step, percent):
+    with _progress_lock:
+        _progress_state['status'] = 'running'
+        _progress_state['step'] = step
+        _progress_state['percent'] = min(percent, 100)
+        if not _progress_state['log'] or _progress_state['log'][-1] != step:
+            _progress_state['log'].append(step)
+
+
+def reset_progress():
+    with _progress_lock:
+        _progress_state['status'] = 'idle'
+        _progress_state['step'] = ''
+        _progress_state['percent'] = 0
+        _progress_state['log'] = []
 
 
 webbrowser.open('http://localhost:5000')
@@ -25,15 +148,72 @@ def form():
     return render_template("main.html", wrong=wrong)
 
 
+@app.route("/progress", methods=['GET'])
+def get_progress():
+    with _progress_lock:
+        return jsonify(_progress_state)
+
+
+def _hw_progress_callback(done, total):
+    pct = 65 + int(25 * done / max(total, 1))
+    update_progress('Checking hardware versions (%d of %d phones)...' % (done, total), pct)
+
+
 @app.route("/phoneinfo", methods=["POST"])
 def getPhoneInfo():
+    reset_progress()
+    update_progress('Initializing...', 2)
     start = time.time()
-    s = requests.Session()
-    requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
     address = request.form['address']
     username = request.form['username']
-    password = urllib.parse.quote(request.form['password'])
+    password = request.form['password']
     axl_ver = request.form.get('axl_ver')
+
+    # Set up shared session with auth and SSL disabled
+    session = Session()
+    session.verify = False
+    session.auth = HTTPBasicAuth(username, password)
+    transport = Transport(session=session)
+
+    # Create zeep clients for AXL and RIS
+    axl_wsdl_path = _get_axl_wsdl_path(axl_ver or 'current')
+    ris_wsdl = 'https://%s:8443/realtimeservice2/services/RISService70?wsdl' % address
+
+    if axl_wsdl_path is None:
+        update_progress('AXL WSDL files not found', 0)
+        with _progress_lock:
+            _progress_state['status'] = 'error'
+        return render_template("main.html", wrong="AXL WSDL files not found. Ensure the AXL_WSDL directory is present.")
+
+    try:
+        update_progress('Loading AXL service...', 5)
+        axl_settings = Settings(strict=False, xml_huge_tree=True, raw_response=True)
+        axl_client = Client(axl_wsdl_path, settings=axl_settings, transport=transport)
+        axl_binding = '{http://www.cisco.com/AXLAPIService/}AXLAPIBinding'
+        axl_url = 'https://%s:8443/axl/' % address
+        axl_service = axl_client.create_service(axl_binding, axl_url)
+    except Exception as e:
+        update_progress('Failed to connect to AXL', 0)
+        with _progress_lock:
+            _progress_state['status'] = 'error'
+        print("AXL WSDL error: " + str(e))
+        return render_template("main.html", wrong="Failed to connect to AXL on " + str(address))
+
+    try:
+        update_progress('Loading RIS service from CUCM...', 10)
+        ris_client = Client(ris_wsdl, transport=transport)
+        ris_bindings = list(ris_client.wsdl.bindings.keys())
+        if not ris_bindings:
+            raise Exception("No bindings found in RIS WSDL")
+        ris_binding = ris_bindings[0]
+        ris_url = 'https://%s:8443/realtimeservice2/services/RISService70' % address
+        ris_service = ris_client.create_service(ris_binding, ris_url)
+    except Exception as e:
+        update_progress('Failed to connect to RIS', 0)
+        with _progress_lock:
+            _progress_state['status'] = 'error'
+        print("RIS WSDL error: " + str(e))
+        return render_template("main.html", wrong="Failed to connect to RIS on " + str(address))
 
     # https://www.cisco.com/c/en/us/td/docs/voice_ip_comm/cuipph/MPP/MPP-conversion/enterprise-to-mpp/cuip_b_conversion-guide-ipphone/cuip_b_conversion-guide-ipphone_chapter_00.html
 
@@ -91,42 +271,36 @@ def getPhoneInfo():
     axlquery = "SELECT device.pkid AS devicepkid, device.name, devicepool.name AS devicepoolname, typeproduct.enum as modelenum FROM device LEFT OUTER JOIN devicepool ON device.fkdevicepool = devicepool.pkid LEFT OUTER JOIN typeproduct ON device.tkproduct = typeproduct.enum where typeproduct.enum in (%s)" % (
         ','.join("'{0}'".format(x) for x in typeproduct_enums))
 
-    axl_header = {"Content-type": "text/xml", "SOAPAction": "CUCM:DB ver={}".format(axl_ver)}
-    header = {"Content-type": "text/xml", "SOAPAction": "CUCM:DB ver={}".format(axl_ver)}
-    axl_url = "https://%s:%s@%s:8443/axl/" % (username, password, address)
-
     try:
-        # a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery, axl_ver), timeout=10)
-        a = s.post(url=axl_url, headers=axl_header, verify=False, data=formatSOAPQuery(axlquery, axl_ver))
+        update_progress('Querying phone inventory via AXL...', 15)
+        axl_msg = axl_client.create_message(axl_service, 'executeSQLQuery', sql=axlquery)
+        #print("AXL SOAP request:\n%s" % etree.tostring(axl_msg, pretty_print=True).decode())
+        axl_response = axl_service.executeSQLQuery(sql=axlquery)
+        _check_axl_fault(axl_response)
 
-        dp = []
         axldevices = []
+        dp = []
         pkids = []
 
-        if a.status_code == 200:
+        axl_soup = BeautifulSoup(axl_response.content, 'xml')
+        rows = axl_soup.find_all('row')
+
+        if rows:
             print("Cluster " + address + ": Successfully connected to CUCM using AXL")
-            soup = BeautifulSoup(a.text, 'xml')
-            name = soup.find_all('name')
-            pkid = soup.find_all('devicepkid')
-            devpool = soup.find_all('devicepoolname')
-            for found in name:
-                h = BeautifulSoup(str(found), 'xml')
-                axldevices.append(
-                    h.find('name').text.upper())  # one VNT device has lower case cc at the end of the MAC rest is UPPER
-            for d in devpool:
-                h = BeautifulSoup(str(d), 'xml')
-                dp.append(h.find('devicepoolname').text)
-            for p in pkid:
-                h = BeautifulSoup(str(p), 'xml')
-                pkids.append(h.find('devicepkid').text)
+            for row in rows:
+                name_tag = row.find('name')
+                dp_tag = row.find('devicepoolname')
+                pkid_tag = row.find('devicepkid')
+                if name_tag and dp_tag and pkid_tag:
+                    axldevices.append(str(name_tag.text).upper())
+                    dp.append(str(dp_tag.text))
+                    pkids.append(str(pkid_tag.text))
 
             name_to_dp = dict(zip(axldevices, dp))
             name_to_pkid = dict(zip(axldevices, pkids))
 
-            ris_lookup_list = []
-            for key in name_to_dp:
-                if key.startswith('SEP'):
-                    ris_lookup_list.append(key)
+            ris_lookup_list = [key for key in name_to_dp if key.startswith('SEP')]
+            update_progress('Found %d eligible phones' % len(ris_lookup_list), 20)
 
             if "7800_only" in request.form and "8800_only" in request.form:
                 print("Found the following 7800 AND 8800 series phones: " + str(ris_lookup_list))
@@ -138,86 +312,78 @@ def getPhoneInfo():
                 print("NOTHING SELECTED - Default to both 7800 and 8800: " + str(ris_lookup_list))
 
         else:
-            print("Cluster " + address + " Failed to connect to AXL")
-            print(a.status_code)
-            print(a.text)
+            print("Cluster " + address + " Failed to connect to AXL or no results")
             return render_template("main.html", wrong="Incorrect username, password, or missing AXL permissions.")
 
-    except (requests.exceptions.ConnectionError, requests.exceptions.ConnectTimeout):
+    except Exception as e:
+        print("AXL error: " + str(e))
         return render_template("main.html", wrong="Failed to connect to " + str(address))
 
-    risquery = formatRISQuery(ris_lookup_list)
-
-    head = {"Content-type": "text/xml"}
-    cucm = "https://%s:%s@%s:8443/realtimeservice2/services/RISService70" % (username, password, address)
-
-    all_ris_results = []
+    # RIS device lookup using zeep
     print("Cluster " + address + ": Looking up phone IP addresses using RIS")
 
+    # Split device list into chunks of 1000 (API limit)
+    split_device_list = [ris_lookup_list[i:i + 1000] for i in range(0, len(ris_lookup_list), 1000)]
 
-    first_ris = True
-
-    for req in risquery:
-        try:
-            x = s.post(cucm, headers=head, verify=False, data=req)
-
-            if x.status_code == 200:
-                if first_ris:
-                    print("Cluster " + address + ": Successfully connected to RIS")
-                    first_ris = False
-                all_ris_results.append(x.text)
-            else:
-                print("Cluster " + address + ": Failed to get phone IP addresses via RIS")
-                print(
-                    "Cluster " + address + ": Check user roles include Standard AXL API Access, Standard RealtimeAndTraceCollection, and Standard CCM Admin Users")
-                wrong = "Invalid username or password"
-                return render_template("main.html", wrong=wrong)
-
-            #Allowed Device Queries Per Minute" value is 15 (60/15 = 4 sec between requests)
-            time.sleep(5)
-
-        except (requests.exceptions.ConnectionError, requests.exceptions.ConnectTimeout):
-            return render_template("main.html", wrong="Failed to connect to " + str(address))
-
+    SEP_list = []
+    IPs = []
     FW = []
     phonemodel = []
     describe = []
-    IPs = []
-    SEP_list = []
 
+    first_ris = True
+    ris_factory = ris_client.type_factory('ns0')
+    total_batches = len(split_device_list)
 
-    for data in all_ris_results:
+    for batch_idx, chunk in enumerate(split_device_list):
+        batch_pct = 22 + int(28 * (batch_idx + 1) / total_batches)
+        update_progress('Querying RIS for IP addresses (batch %d of %d)...' % (batch_idx + 1, total_batches), batch_pct)
+        try:
+            select_items = [ris_factory.SelectItem(Item=dev) for dev in chunk]
 
-        SEP = re.findall(r'<ns1:Name>SEP[A-Z0-9]+</ns1:Name>', data)
-        SEP = re.findall(r'SEP[A-Z0-9]+', str(SEP))
-        for found_sep in SEP:
-            SEP_list.append(found_sep)
+            criteria = ris_factory.CmSelectionCriteria(
+                MaxReturnedDevices=1000,
+                DeviceClass='Phone',
+                Model=255,
+                Status='Registered',
+                NodeName='',
+                SelectBy='Name',
+                SelectItems={'item': select_items},
+                Protocol='Any',
+                DownloadStatus='Any'
+            )
 
+            #print("RIS batch %d: SelectItems = %s" % (batch_idx + 1, [dev for dev in chunk]))
+            ris_node = ris_client.create_message(ris_service, 'selectCmDevice', StateInfo='', CmSelectionCriteria=criteria)
+            #print("RIS SOAP request:\n%s" % etree.tostring(ris_node, pretty_print=True).decode())
+            ris_result = ris_service.selectCmDevice(StateInfo='', CmSelectionCriteria=criteria)
 
-        soup = BeautifulSoup(data, 'xml')
-        load = soup.find_all('ActiveLoadID')
-        model = soup.find_all('Model')
-        description = soup.find_all('Description')
+            if first_ris:
+                print("Cluster " + address + ": Successfully connected to RIS")
+                first_ris = False
 
+            # Parse zeep response objects
+            if ris_result and ris_result.SelectCmDeviceResult and ris_result.SelectCmDeviceResult.CmNodes:
+                for node in ris_result.SelectCmDeviceResult.CmNodes.item:
+                    if node.CmDevices and node.CmDevices.item:
+                        for device in node.CmDevices.item:
+                            dev_name = str(device.Name).upper()
+                            if dev_name.startswith('SEP'):
+                                SEP_list.append(dev_name)
+                                IPs.append(str(device.IPAddress.item[0].IP) if device.IPAddress and device.IPAddress.item else 'unknown')
+                                FW.append(str(device.ActiveLoadID) if device.ActiveLoadID else 'unknown')
+                                phonemodel.append(str(device.Model) if device.Model else 'unknown')
+                                describe.append(str(device.Description) if device.Description else '')
 
-        for firmware in load:
-            h = BeautifulSoup(str(firmware), 'xml')
-            FW.append(h.find('ActiveLoadID').text)
+            # Allowed Device Queries Per Minute value is 15 (60/15 = 4 sec between requests)
+            time.sleep(5)
 
-        for type in model:
-            h = BeautifulSoup(str(type), 'xml')
-            phonemodel.append(h.find('Model').text)
+        except Exception as e:
+            print("RIS error: " + str(e))
+            print("Cluster " + address + ": Check user roles include Standard AXL API Access, Standard RealtimeAndTraceCollection, and Standard CCM Admin Users")
+            return render_template("main.html", wrong="Failed to get phone IP addresses via RIS")
 
-        for des in description:
-            h = BeautifulSoup(str(des), 'xml')
-            describe.append(h.find('Description').text)
-
-        IP = re.findall(r'<ns1:IP>[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}</ns1:IP>', data)
-        IP = re.findall(r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}', str(IP))
-        for addr in IP:
-            IPs.append(addr)
-
-    # create a dict of device name to IP Address
+    # Create dicts mapping device name to properties
     phone_IPs = dict(zip(SEP_list, IPs))
     phone_FW = dict(zip(SEP_list, FW))
     phone_model = dict(zip(SEP_list, phonemodel))
@@ -247,6 +413,9 @@ def getPhoneInfo():
     result_dic = {}
 
     for phone in name_ip_lookup:
+        if phone not in name_to_dp:
+            print("Skipping %s (returned by RIS but not in AXL inventory)" % phone)
+            continue
         result_dic[phone] = {'ip': name_ip_lookup[phone],
                              'firmware': name_fw_lookup[phone],
                              'model': name_model_lookup[phone],
@@ -254,23 +423,29 @@ def getPhoneInfo():
                              'devicepool': name_to_dp[phone]}
 
 
-    # enable web access for devices if selected
+    # enable web access for devices if selected, with try/finally to ensure revert
     if "webaccess" in request.form:
-        orig_devicexml = readDeviceXML(name_to_pkid, axl_url, s, header, address, axl_ver)
+        update_progress('Reading current web access settings...', 52)
+        orig_devicexml = readDeviceXML(name_to_pkid, axl_service, address)
         print('Saved original deviceXML settings')
-        updated_devicexml = updateDeviceXML(orig_devicexml, axl_url, s, header, address, axl_ver, name_to_pkid)
+        update_progress('Enabling web access on phones...', 55)
+        updated_devicexml = updateDeviceXML(orig_devicexml, axl_service, address, name_to_pkid)
+        _set_revert_state(orig_devicexml, updated_devicexml, name_to_pkid, axl_service, address)
 
-    # give the phones time to apply the web access setting change otherwise this happens too fast
-    # webaccess will still be disabled without this when trying to check
-    if "webaccess" in request.form:
-        print("Waiting 60 seconds for phones to reset after enabling web access...")
-        time.sleep(60)
+        try:
+            print("Waiting 60 seconds for phones to reset after enabling web access...")
+            for remaining in range(60, 0, -2):
+                update_progress('Waiting for phones to reset (%ds remaining)...' % remaining, 55 + int(10 * (60 - remaining) / 60))
+                time.sleep(2)
+            full_details = getHardwareVersion(result_dic, on_progress=_hw_progress_callback)
+        finally:
+            update_progress('Reverting web access settings...', 92)
+            revertDeviceXML(orig_devicexml, axl_service, address, updated_devicexml, name_to_pkid)
+            _clear_revert_state()
+    else:
+        full_details = getHardwareVersion(result_dic, on_progress=_hw_progress_callback)
 
-    full_details = getHardwareVersion(result_dic)
-
-    # put back web access after changing it to what it was originally if chosen to enable web access
-    if "webaccess" in request.form:
-        revertDeviceXML(orig_devicexml, axl_url, name_to_pkid, s, header, address, axl_ver, updated_devicexml)
+    update_progress('Generating report...', 95)
 
     final_report, summary_report = cloudReady(result_dic, full_details, typemodel_dict)
 
@@ -280,6 +455,9 @@ def getPhoneInfo():
     hours, rem = divmod(end - start, 3600)
     minutes, seconds = divmod(rem, 60)
     print("Done - Completed in {:0>2}:{:0>2}:{:05.2f}".format(int(hours), int(minutes), seconds))
+    update_progress('Complete!', 100)
+    with _progress_lock:
+        _progress_state['status'] = 'complete'
 
     if len(full_details) > 0:
         return render_template("results2.html", webdata=final_report, summary=summary_report)
@@ -287,112 +465,86 @@ def getPhoneInfo():
         return "Failed to connect to any phones to retrieve hardware version information.  Please make sure web access was turned on and phones are online and reachable using HTTP (port 80/TCP)."
 
 
-def formatSOAPQuery(query, axl_ver):
-    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/{}"><soapenv:Header/><soapenv:Body><ns:executeSQLQuery><sql>{}</sql></ns:executeSQLQuery></soapenv:Body></soapenv:Envelope>'.format(axl_ver, query)
-
-    return soap_data
-
-
-def formatSOAPUpdate(query, axl_ver):
-    soap_data = '<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/{}"><soapenv:Header/><soapenv:Body><ns:executeSQLUpdate><sql>{}</sql></ns:executeSQLUpdate></soapenv:Body></soapenv:Envelope>'.format(axl_ver, query)
-
-    return soap_data
-
-
-def formatRISQuery(device_list):
-    ris_queries_list = []
-
-    # if over 1000, split into 1000 devices at a time, since that is the maximum in a request
-    split_device_list = [device_list[i:i + 1000] for i in range(0, len(device_list), 1000)]
-
-    for chunk in split_device_list:
-        q = ""
-        for dev in chunk:
-            q = q + "<soap:item><soap:Item>" + dev + "</soap:Item></soap:item>"
-
-        # Returns all registered phones, any model, using the select items list to put in 1000 devices at a time (max) to get all phones found from AXL query
-        ris_query = """<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:soap="http://schemas.cisco.com/ast/soap">
-           <soapenv:Header/>
-           <soapenv:Body>
-              <soap:selectCmDevice>
-                 <soap:StateInfo></soap:StateInfo>
-                 <soap:CmSelectionCriteria>
-                    <soap:MaxReturnedDevices>1000</soap:MaxReturnedDevices>
-                    <soap:DeviceClass>Phone</soap:DeviceClass>
-                    <soap:Model>255</soap:Model>
-                    <soap:Status>Registered</soap:Status>
-                    <soap:NodeName></soap:NodeName>
-                    <soap:SelectBy>Name</soap:SelectBy>
-                    <soap:SelectItems>
-                     %s  
-                    </soap:SelectItems>
-                    <soap:Protocol>Any</soap:Protocol>
-                    <soap:DownloadStatus>Any</soap:DownloadStatus>
-                 </soap:CmSelectionCriteria>
-              </soap:selectCmDevice>
-           </soapenv:Body>
-        </soapenv:Envelope>""" % (q)
-
-        ris_queries_list.append(ris_query)
-    return ris_queries_list
+def _fetch_phone_hardware(phone, ip):
+    """Fetch hardware version and serial from a single phone's web interface."""
+    phone_url = 'http://%s/CGI/Java/Serviceability?adapterX=device.statistics.device' % ip
+    try:
+        x = requests.get(phone_url, timeout=10)
+        if x.status_code == 200:
+            soup = BeautifulSoup(x.text, 'xml')
+            udi = soup.find_all('udi')
+            parts = str.splitlines(str(udi[0]))
+            serial = parts[4]
+            hw_ver = parts[3]
+            return phone, {'serial': serial, 'hw_ver': hw_ver}
+        else:
+            print("Failed to connect to the phone's webpage for %s (%s)" % (phone, ip))
+            return phone, {'serial': 'unknown', 'hw_ver': 'unknown'}
+    except Exception:
+        print("Failed to connect to the phone's webpage for %s (%s)" % (phone, ip))
+        return phone, {'serial': 'unknown', 'hw_ver': 'unknown'}
 
 
-def getHardwareVersion(result_dic):
+def getHardwareVersion(result_dic, on_progress=None):
     hardware_info = {}
-    for phone in result_dic:
-        phone_url = 'http://%s/CGI/Java/Serviceability?adapterX=device.statistics.device' % (result_dic[phone]['ip'])
+    total = len(result_dic)
+    counter = {'done': 0}
+    counter_lock = threading.Lock()
 
-        try:
-            x = requests.get(phone_url, timeout=10)
-            if x.status_code == 200:
-                soup = BeautifulSoup(x.text, 'xml')
-                udi = soup.find_all('udi')
+    def _fetch_and_track(phone, ip):
+        result = _fetch_phone_hardware(phone, ip)
+        with counter_lock:
+            counter['done'] += 1
+            if on_progress:
+                on_progress(counter['done'], total)
+        return result
 
-                # hardware_info['SEPB000B4BA1DFA'] = {serial: '', 'hw_ver':''}
-                parts = str.splitlines(str(udi[0]))
-                serial = parts[4]
-                hw_ver = parts[3]
-                hardware_info[phone] = {'serial': serial, 'hw_ver': hw_ver}
-            else:
-                print("Failed to connect to the phone's webpage for %s (%s)" % (phone, result_dic[phone]['ip']))
-        except:
-            print("Failed to connect to the phone's webpage for %s (%s)" % (phone, result_dic[phone]['ip']))
-            hardware_info[phone] = {'serial': 'unknown', 'hw_ver': 'unknown'}
-            continue
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = {
+            executor.submit(_fetch_and_track, phone, result_dic[phone]['ip']): phone
+            for phone in result_dic
+        }
+        for future in as_completed(futures):
+            phone, info = future.result()
+            hardware_info[phone] = info
 
-    print("Hardware details for phones - " + str(hardware_info))
+    print("Hardware details for phones: " + str(hardware_info))
     return hardware_info
 
-def readDeviceXML(name_to_pkid, axl_url, s, header, address, axl_ver):
-    '''
-    orig_devicexml = {
-    'pkid' : {
-        'name': 'SEPABCDABCDABCD'
-        'xml' : '&lt;disableSpeaker&gt;false&lt;/disableSpeaker&gt;&lt;webAccess&gt;1&lt;/webAccess&gt;'
-        }
-    }
-    '''
+def _read_single_device_xml(name, pkid, axl_service):
+    """Read device XML for a single phone via AXL."""
+    query = "execute procedure dbreaddevicexml('%s')" % str(pkid)
+    try:
+        response = axl_service.executeSQLQuery(sql=query)
+        _check_axl_fault(response)
+        soup = BeautifulSoup(response.content, 'xml')
+        row = soup.find('row')
+        if row:
+            expression_tag = row.find('expression')
+            if expression_tag and expression_tag.text:
+                raw_xml = expression_tag.text
+                formatted_xml = raw_xml.replace('>', '&gt;').replace('<', '&lt;')
+                return pkid, {'name': name, 'xml': formatted_xml}
+    except Exception as e:
+        print("Error reading device XML for %s: %s" % (name, str(e)))
+    return pkid, {'name': name, 'xml': ''}
 
+
+def readDeviceXML(name_to_pkid, axl_service, address):
     orig_devicexml = {}
-    for name, pkid in name_to_pkid.items():
-        webaccessRead = "execute procedure dbreaddevicexml('" + str(pkid) + "')"
-        c = s.post(url=axl_url, verify=False, data=formatSOAPQuery(webaccessRead, axl_ver))
-        soup = BeautifulSoup(c.text, 'xml')
-        devicexml = soup.find('expression')
-        formatted_xml = devicexml.text.replace('>', '&gt;').replace('<', '&lt;')
-        orig_devicexml[pkid] = {'name': name, 'xml': formatted_xml}
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        futures = {
+            executor.submit(_read_single_device_xml, name, pkid, axl_service): pkid
+            for name, pkid in name_to_pkid.items()
+        }
+        for future in as_completed(futures):
+            pkid, data = future.result()
+            orig_devicexml[pkid] = data
 
     return orig_devicexml
 
-def updateDeviceXML(orig_devicexml, axl_url, s, header, address, axl_ver, name_to_pkid):
-    '''
-    updated_phonexml = {
-        'pkid': {
-            'name': 'SEPABCDABCDABCD',
-            'updatedxml': '&lt;disableSpeaker&gt;false&lt;/disableSpeaker&gt;&lt;webAccess&gt;0&lt;/webAccess&gt;'
-        }
-    }
-    '''
+
+def updateDeviceXML(orig_devicexml, axl_service, address, name_to_pkid):
     updated_phonexml = {}
 
     for pkid in orig_devicexml:
@@ -400,8 +552,9 @@ def updateDeviceXML(orig_devicexml, axl_url, s, header, address, axl_ver, name_t
             if '&lt;webAccess&gt;1&lt;/webAccess&gt;' in orig_devicexml[pkid]['xml']:
                 updated_phonexml[pkid] = {
                     'name': orig_devicexml[pkid]['name'],
-                    'updatedxml': orig_devicexml[pkid]['xml'].replace('&lt;webAccess&gt;1&lt;/webAccess&gt;',\
-                                                                      '&lt;webAccess&gt;0&lt;/webAccess&gt;')
+                    'updatedxml': orig_devicexml[pkid]['xml'].replace(
+                        '&lt;webAccess&gt;1&lt;/webAccess&gt;',
+                        '&lt;webAccess&gt;0&lt;/webAccess&gt;')
                 }
             else:
                 updated_phonexml[pkid] = {
@@ -415,47 +568,55 @@ def updateDeviceXML(orig_devicexml, axl_url, s, header, address, axl_ver, name_t
             }
 
         if updated_phonexml[pkid]['updatedxml'] is not None:
-            webaccessON = "execute procedure dbwritedevicexml('" + str(pkid) + "', '" + str(updated_phonexml[pkid]['updatedxml']) + "')"
+            query = "execute procedure dbwritedevicexml('%s', '%s')" % (
+                str(pkid), str(updated_phonexml[pkid]['updatedxml']))
+            try:
+                update_resp = axl_service.executeSQLUpdate(sql=query)
+                _check_axl_fault(update_resp)
+                print("Cluster %s: Successfully updated webaccess settings for %s" % (
+                    address, str(updated_phonexml[pkid]['name'])))
+            except Exception as e:
+                print("Cluster %s: --- ERROR --- %s: %s" % (
+                    address, str(updated_phonexml[pkid]['name']), str(e)))
 
-            y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessON, axl_ver))
-            if y.status_code == 200:
-                print("Cluster %s: Successfully updated webaccess settings for %s" % (address, str(updated_phonexml[pkid]['name'])))
-            else:
-                print("Cluster " + address + " : --- ERROR CODE 1 --- " + str(updated_phonexml[pkid]['name']) + " -- " + str(y.text))
+    # Apply config to all updated phones using threading
+    phones_to_apply = [
+        (updated_phonexml[pkid]['name'], pkid)
+        for pkid in updated_phonexml
+        if updated_phonexml[pkid]['updatedxml'] is not None
+    ]
 
-    for phone_pkid in updated_phonexml:
-        if updated_phonexml[phone_pkid]['updatedxml'] is not None:
-            device_name = updated_phonexml[phone_pkid]['name']
-            applyConfig(device_name, s, axl_url, header, phone_pkid, axl_ver)
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        for device_name, phone_pkid in phones_to_apply:
+            executor.submit(applyConfig, device_name, axl_service, phone_pkid)
 
     print("Done applying config to enable web access")
-
     return updated_phonexml
 
-def applyConfig(devicename, session, axl_url, header, devicepkid, axl_ver):
-    soap_data = '''<?xml version="1.0" encoding="UTF-8"?><soapenv:Envelope \
-    xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:ns="http://www.cisco.com/AXL/API/{}">\
-    <soapenv:Header/><soapenv:Body><ns:applyPhone><uuid>{}</uuid></ns:applyPhone></soapenv:Body>\
-    </soapenv:Envelope>'''.format(axl_ver,devicepkid)
 
-    z = session.post(url=axl_url, headers=header, verify=False, data=soap_data)
-    if z.status_code != 200:
-        if devicename.startswith("SEP"):
-            print('*** ERROR *** Apply config failed for %s (%s)' % (devicename, devicepkid))
-    else:
+def applyConfig(devicename, axl_service, devicepkid):
+    try:
+        resp = axl_service.applyPhone(uuid=devicepkid)
+        _check_axl_fault(resp)
         print('Apply config sent for %s (%s)' % (devicename, devicepkid))
+    except Exception as e:
+        if devicename.startswith("SEP"):
+            print('*** ERROR *** Apply config failed for %s (%s): %s' % (devicename, devicepkid, str(e)))
 
 
-def revertDeviceXML(orig_devicexml, axl_url, name_to_pkid, s, header, address, axl_ver, updated_devicexml):
+def revertDeviceXML(orig_devicexml, axl_service, address, updated_devicexml, name_to_pkid):
     for pkid in updated_devicexml:
         if updated_devicexml[pkid]['updatedxml'] is not None:
-            webaccessRevert = "execute procedure dbwritedevicexml(\'%s\', \'%s\')" % (pkid, orig_devicexml[pkid]['xml'])
-            y = s.post(url=axl_url, headers=header, verify=False, data=formatSOAPUpdate(webaccessRevert, axl_ver))
-            if y.status_code == 200:
-                print("Cluster %s: Successfully reverted webaccess settings for %s" % (address, orig_devicexml[pkid]['name']))
-                applyConfig(updated_devicexml[pkid]['name'], s, axl_url, header, pkid, axl_ver)
-            else:
-                print("Cluster " + str(address) + ": --- ERROR CODE 1 --- " + str(updated_phonexml[pkid]['name']) + " -- " + str(y.text))
+            query = "execute procedure dbwritedevicexml('%s', '%s')" % (pkid, orig_devicexml[pkid]['xml'])
+            try:
+                revert_resp = axl_service.executeSQLUpdate(sql=query)
+                _check_axl_fault(revert_resp)
+                print("Cluster %s: Successfully reverted webaccess settings for %s" % (
+                    address, orig_devicexml[pkid]['name']))
+                applyConfig(updated_devicexml[pkid]['name'], axl_service, pkid)
+            except Exception as e:
+                print("Cluster %s: --- ERROR --- %s: %s" % (
+                    address, orig_devicexml[pkid]['name'], str(e)))
 
 
 def cloudReady(result_dict, full_details, typemodel_dict):
@@ -520,26 +681,60 @@ def cloudReady(result_dict, full_details, typemodel_dict):
                 else:  # 7821 before V03, 7841 before V04, 7861 before V03
                     cloud_ready = "No"
 
-            for k, v in typemodel_dict.items():
-                if v == result_dict[devicename]['model']:
-                    model_name = k
-
         except KeyError:
             # catch MRA devices where we cannot lookup Serial/HW_ver due to expressway in between
             cloud_ready = 'unknown'
+            hw_ver = 'unknown'
             print("MRA Registered Device Found: %s" % (devicename))
+
+        # Derive recommended status from superscript markers
+        recommended = "Yes"
+        recommended_reason = ""
+        if cloud_ready == "Yes\u00B9":
+            recommended = "No"
+            recommended_reason = "hw_ver"
+        elif cloud_ready == "Yes\u00b2":
+            recommended = "No"
+            recommended_reason = "eos"
+        elif cloud_ready == "Yes\u00b3":
+            recommended = "Unknown"
+            recommended_reason = "possibly"
+        elif cloud_ready == "No":
+            recommended = "No"
+        elif cloud_ready == "unknown":
+            recommended = "Unknown"
+
+        # Strip superscripts for clean mpp_capable value
+        if cloud_ready.startswith("Yes"):
+            cloud_ready = "Yes"
+
+        # Resolve friendly model name from enum
+        model_name = 'unknown'
+        for k, v in typemodel_dict.items():
+            if v == result_dict[devicename]['model']:
+                model_name = k
+                break
+
+        # Recommendations are not applicable to 7800 series
+        if model_name.startswith('78'):
+            recommended = "n/a"
+            recommended_reason = ""
+
+        phone_details = full_details.get(devicename, {'serial': 'unknown', 'hw_ver': 'unknown'})
 
         final_report[devicename] = {
             'devicename': devicename,
             'ip': result_dict[devicename]['ip'],
             'firmware': result_dict[devicename]['firmware'],
             'model': model,
-            'phone_model': model_name,  # actual name not enum
+            'phone_model': model_name,
             'description': result_dict[devicename]['description'],
             'devicepool': result_dict[devicename]['devicepool'],
-            'serial': full_details[devicename]['serial'],
+            'serial': phone_details['serial'],
             'hw_ver': hw_ver,
-            'mpp_capable': cloud_ready
+            'mpp_capable': cloud_ready,
+            'recommended': recommended,
+            'recommended_reason': recommended_reason
         }
 
     ready = 0
@@ -550,7 +745,7 @@ def cloudReady(result_dict, full_details, typemodel_dict):
             ready += 1
         elif final_report[out]['mpp_capable'] == "No":
             notready += 1
-        elif final_report[out]['mpp_capable'] == "Unknown":
+        elif final_report[out]['mpp_capable'] == "unknown":
             unknown += 1
 
     summary_report = {
@@ -565,7 +760,7 @@ def cloudReady(result_dict, full_details, typemodel_dict):
 
 def generateCSV(final_report):
     csv_columns = ['devicename', 'devicepool', 'phone_model', 'firmware', 'description', 'ip', 'serial', 'hw_ver',
-                   'mpp_capable']
+                   'mpp_capable', 'recommended']
     if getattr(sys, 'frozen', False):
         csv_file_location = os.path.join(sys._MEIPASS, 'static') + "/Cisco_MPP_Firmware_Readiness_Report.csv"
     else:
@@ -579,4 +774,4 @@ def generateCSV(final_report):
 
 
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=5000, debug=False)
+    app.run(host='127.0.0.1', port=5000, debug=False, threaded=True)

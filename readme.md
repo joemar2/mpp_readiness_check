@@ -10,9 +10,9 @@ On Cisco Unified Communications Manager (CUCM) create a phone service from Devic
 ## Solution
 There is now a standalone executable tool that can be given to customers that automates the hardware version retrieval proces -> [DOWNLOAD](https://github.com/joemar2/mpp_readiness_check/tree/master/executables).
 
-![alt-text](readme_images/main_screen.png "Main Screen")
+![alt-text](readme_images/main_screen_v3.png "Main Screen")
 
-![alt-text](readme_images/output_report.png "Output Report")
+![alt-text](readme_images/output_report_v3_dark.png "Output Report")
 
 This tool assists with determining which Cisco IP phones can be converted to Multiplatform phone (MPP) firmware to be used with Cisco Webex Calling or other approved third-party call control systems. It works by connecting to Cisco Unified Communications Manager (CUCM) and finds all phone models that can run MPP firmware. Those phone models are the Cisco 7811, 7821, 7832, 7841, 7861, 8811, 8832, 8832NR, 8841, 8845, 8851, 8851NR, 8861, 8865 and 8865NR.
 Next it checks for hardware version restrictions as described in table 1 of the Convert between Enterprise Firmware and Multiplatform Firmware for Cisco IP Phone 7800 and 8800 Series Guide.
@@ -30,4 +30,4 @@ Support for this tool is provided on a best effort basis by the creator and cont
 
 ## Contribution
 mpp_readiness_check is a community developed project. Code contributions are welcome via PRs!
-Copyright (c) 2018-2022 Cisco and/or its affiliates.
+Copyright (c) 2018-2026 Cisco and/or its affiliates.

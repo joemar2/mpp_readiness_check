@@ -5,3 +5,6 @@ dist/
 __pycache__/
 .idea/
 /test.py
+screenshot.html
+sample_results.html
+static/Cisco_MPP_Firmware_Readiness_Report.csv
