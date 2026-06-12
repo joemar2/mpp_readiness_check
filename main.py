@@ -354,9 +354,9 @@ def getPhoneInfo():
             )
 
             #print("RIS batch %d: SelectItems = %s" % (batch_idx + 1, [dev for dev in chunk]))
-            ris_node = ris_client.create_message(ris_service, 'selectCmDevice', StateInfo='', CmSelectionCriteria=criteria)
+            ris_node = ris_client.create_message(ris_service, 'selectCmDeviceExt', StateInfo='', CmSelectionCriteria=criteria)
             #print("RIS SOAP request:\n%s" % etree.tostring(ris_node, pretty_print=True).decode())
-            ris_result = ris_service.selectCmDevice(StateInfo='', CmSelectionCriteria=criteria)
+            ris_result = ris_service.selectCmDeviceExt(StateInfo='', CmSelectionCriteria=criteria)
 
             if first_ris:
                 print("Cluster " + address + ": Successfully connected to RIS")
