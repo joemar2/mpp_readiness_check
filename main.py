@@ -512,22 +512,38 @@ def getHardwareVersion(result_dic, on_progress=None):
     return hardware_info
 
 def _read_single_device_xml(name, pkid, axl_service):
-    """Read device XML for a single phone via AXL."""
+    """Read device XML for a single phone via AXL.
+
+    The XML is kept exactly as CUCM stores it (plain '<tag>value</tag>'). Do not
+    entity-escape it here: zeep already escapes the SOAP body, so escaping it a
+    second time stores literal '&lt;' text in the database and the phone loses
+    every device level setting (line mode, etc.).
+
+    'xml' is None when the read failed, so the phone is skipped instead of
+    having its settings overwritten. An empty string is a valid (empty) config.
+    """
     query = "execute procedure dbreaddevicexml('%s')" % str(pkid)
     try:
         response = axl_service.executeSQLQuery(sql=query)
         _check_axl_fault(response)
         soup = BeautifulSoup(response.content, 'xml')
         row = soup.find('row')
-        if row:
+        if row is not None:
             expression_tag = row.find('expression')
-            if expression_tag and expression_tag.text:
-                raw_xml = expression_tag.text
-                formatted_xml = raw_xml.replace('>', '&gt;').replace('<', '&lt;')
-                return pkid, {'name': name, 'xml': formatted_xml}
+            if expression_tag is not None:
+                return pkid, {'name': name, 'xml': expression_tag.text or ''}
+        print("Error reading device XML for %s: unexpected AXL response" % name)
     except Exception as e:
         print("Error reading device XML for %s: %s" % (name, str(e)))
-    return pkid, {'name': name, 'xml': ''}
+    return pkid, {'name': name, 'xml': None}
+
+
+def _write_device_xml(pkid, xml, axl_service):
+    """Write device XML for a single phone via AXL. Raises Exception on failure."""
+    # double any single quotes so the XML can't break out of the SQL string literal
+    query = "execute procedure dbwritedevicexml('%s', '%s')" % (str(pkid), str(xml).replace("'", "''"))
+    response = axl_service.executeSQLUpdate(sql=query)
+    _check_axl_fault(response)
 
 
 def readDeviceXML(name_to_pkid, axl_service, address):
@@ -548,13 +564,21 @@ def updateDeviceXML(orig_devicexml, axl_service, address, name_to_pkid):
     updated_phonexml = {}
 
     for pkid in orig_devicexml:
-        if 'webAccess' in orig_devicexml[pkid]['xml']:
-            if '&lt;webAccess&gt;1&lt;/webAccess&gt;' in orig_devicexml[pkid]['xml']:
+        if orig_devicexml[pkid]['xml'] is None:
+            # read failed, leave this phone untouched rather than overwrite its settings
+            print("Cluster %s: Skipping webaccess update for %s (could not read device XML)" % (
+                address, str(orig_devicexml[pkid]['name'])))
+            updated_phonexml[pkid] = {
+                'name': orig_devicexml[pkid]['name'],
+                'updatedxml': None
+            }
+        elif 'webAccess' in orig_devicexml[pkid]['xml']:
+            if '<webAccess>1</webAccess>' in orig_devicexml[pkid]['xml']:
                 updated_phonexml[pkid] = {
                     'name': orig_devicexml[pkid]['name'],
                     'updatedxml': orig_devicexml[pkid]['xml'].replace(
-                        '&lt;webAccess&gt;1&lt;/webAccess&gt;',
-                        '&lt;webAccess&gt;0&lt;/webAccess&gt;')
+                        '<webAccess>1</webAccess>',
+                        '<webAccess>0</webAccess>')
                 }
             else:
                 updated_phonexml[pkid] = {
@@ -564,15 +588,12 @@ def updateDeviceXML(orig_devicexml, axl_service, address, name_to_pkid):
         else:
             updated_phonexml[pkid] = {
                 'name': orig_devicexml[pkid]['name'],
-                'updatedxml': orig_devicexml[pkid]['xml'] + '&lt;webAccess&gt;0&lt;/webAccess&gt;'
+                'updatedxml': orig_devicexml[pkid]['xml'] + '<webAccess>0</webAccess>'
             }
 
         if updated_phonexml[pkid]['updatedxml'] is not None:
-            query = "execute procedure dbwritedevicexml('%s', '%s')" % (
-                str(pkid), str(updated_phonexml[pkid]['updatedxml']))
             try:
-                update_resp = axl_service.executeSQLUpdate(sql=query)
-                _check_axl_fault(update_resp)
+                _write_device_xml(pkid, updated_phonexml[pkid]['updatedxml'], axl_service)
                 print("Cluster %s: Successfully updated webaccess settings for %s" % (
                     address, str(updated_phonexml[pkid]['name'])))
             except Exception as e:
@@ -607,10 +628,8 @@ def applyConfig(devicename, axl_service, devicepkid):
 def revertDeviceXML(orig_devicexml, axl_service, address, updated_devicexml, name_to_pkid):
     for pkid in updated_devicexml:
         if updated_devicexml[pkid]['updatedxml'] is not None:
-            query = "execute procedure dbwritedevicexml('%s', '%s')" % (pkid, orig_devicexml[pkid]['xml'])
             try:
-                revert_resp = axl_service.executeSQLUpdate(sql=query)
-                _check_axl_fault(revert_resp)
+                _write_device_xml(pkid, orig_devicexml[pkid]['xml'], axl_service)
                 print("Cluster %s: Successfully reverted webaccess settings for %s" % (
                     address, orig_devicexml[pkid]['name']))
                 applyConfig(updated_devicexml[pkid]['name'], axl_service, pkid)
